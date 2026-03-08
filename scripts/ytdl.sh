@@ -1,0 +1,425 @@
+#!/usr/bin/env bash
+# ytdl-manager management script
+# Usage: ./scripts/ytdl.sh
+
+API="http://192.168.0.166:8911"
+
+# ── colours ────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+
+# ── helpers ────────────────────────────────────────────────────────────────
+require() { command -v "$1" &>/dev/null || { echo -e "${RED}Error: '$1' not found${RESET}"; exit 1; }; }
+require curl; require jq
+
+api()  { curl -sf "$API$1" "${@:2}"; }
+apij() { api "$@" | jq; }
+
+hr()   { echo -e "${CYAN}$(printf '─%.0s' {1..60})${RESET}"; }
+hdr()  { hr; echo -e "${BOLD}${CYAN}  $1${RESET}"; hr; }
+ok()   { echo -e "${GREEN}✓ $1${RESET}"; }
+warn() { echo -e "${YELLOW}⚠  $1${RESET}"; }
+err()  { echo -e "${RED}✗ $1${RESET}"; }
+
+pause() { echo; read -rp "  Press Enter to continue..."; }
+
+# ── health check ───────────────────────────────────────────────────────────
+check_api() {
+  curl -sf "$API/health" &>/dev/null || {
+    err "Cannot reach API at $API"
+    err "Is the container running?  docker ps --filter name=ytdl"
+    exit 1
+  }
+}
+
+# ── subscription helpers ───────────────────────────────────────────────────
+list_subs_raw() { api /subscriptions | jq -r '.[] | "\(.id)\t\(.name)\t\(.enabled)\t\(.last_checked // "never")"'; }
+
+pick_sub() {
+  # Prints "id name" lines and lets user pick; sets $SUB_ID and $SUB_NAME
+  local lines
+  lines=$(api /subscriptions | jq -r '.[] | "\(.id)  \(.name)  [\(if .enabled then "enabled" else "paused" end)]"')
+  if [[ -z "$lines" ]]; then warn "No subscriptions found."; return 1; fi
+  echo
+  echo -e "${BOLD}  Select a subscription:${RESET}"
+  local i=1
+  declare -a ids names
+  while IFS= read -r line; do
+    local id name
+    id=$(echo "$line" | awk '{print $1}')
+    name=$(echo "$line" | awk '{print $2}')
+    ids+=("$id"); names+=("$name")
+    printf "  ${YELLOW}%2d)${RESET} %s\n" "$i" "$line"
+    ((i++))
+  done <<< "$lines"
+  echo
+  read -rp "  Choice [1-$((i-1))]: " choice
+  [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice < i )) || { err "Invalid choice"; return 1; }
+  SUB_ID="${ids[$((choice-1))]}"
+  SUB_NAME="${names[$((choice-1))]}"
+}
+
+# ── ADD SUBSCRIPTION ───────────────────────────────────────────────────────
+cmd_add() {
+  hdr "Add Subscription"
+
+  # Channel URL
+  echo -e "  ${BOLD}Channel/Playlist URL${RESET}"
+  echo    "  Examples:"
+  echo    "    https://www.youtube.com/channel/UC0YvoAYGgdOfySQSLcxtu1w"
+  echo    "    https://www.youtube.com/@channelhandle"
+  echo    "    https://www.youtube.com/playlist?list=PLxxxxxx"
+  echo
+  read -rp "  URL: " url
+  [[ -z "$url" ]] && { err "URL is required"; return; }
+
+  # Name
+  read -rp "  Name (display label): " name
+  [[ -z "$name" ]] && name="$url"
+
+  # Output dir
+  echo
+  echo -e "  ${BOLD}Output directory${RESET} (container path, e.g. /downloads/belleranch)"
+  read -rp "  Output dir: " output_dir
+  [[ -z "$output_dir" ]] && { err "Output dir is required"; return; }
+
+  # Interval
+  echo
+  read -rp "  Check interval in hours [default: 6]: " interval
+  interval=${interval:-6}
+
+  # Quality
+  echo
+  echo -e "  ${BOLD}Quality:${RESET}  1) 1080  2) 720  3) 480  4) best"
+  read -rp "  Choice [default: 1]: " qchoice
+  case "$qchoice" in
+    2) quality="720"  ;;
+    3) quality="480"  ;;
+    4) quality="best" ;;
+    *) quality="1080" ;;
+  esac
+
+  # date_after (playlist only — channels use RSS)
+  local date_after_json="null"
+  if [[ "$url" == *"playlist"* ]]; then
+    echo
+    echo -e "  ${BOLD}Date filter${RESET} (playlist only — leave blank to download all)"
+    echo    "  Examples: today-7days  today-30days  20250101"
+    read -rp "  date_after: " date_after
+    [[ -n "$date_after" ]] && date_after_json="\"$date_after\""
+  fi
+
+  # Confirm
+  echo
+  hr
+  echo -e "  ${BOLD}Summary:${RESET}"
+  printf "    %-16s %s\n" "URL:"        "$url"
+  printf "    %-16s %s\n" "Name:"       "$name"
+  printf "    %-16s %s\n" "Output dir:" "$output_dir"
+  printf "    %-16s %s\n" "Interval:"   "${interval}h"
+  printf "    %-16s %s\n" "Quality:"    "$quality"
+  [[ "$date_after_json" != "null" ]] && printf "    %-16s %s\n" "date_after:" "$date_after"
+  hr
+  echo
+  read -rp "  Add this subscription? [y/N]: " confirm
+  [[ "$confirm" =~ ^[Yy]$ ]] || { warn "Cancelled."; return; }
+
+  local payload
+  payload=$(jq -n \
+    --arg url        "$url"        \
+    --arg name       "$name"       \
+    --arg output_dir "$output_dir" \
+    --argjson interval "$interval" \
+    --arg quality    "$quality"    \
+    --argjson date_after "$date_after_json" \
+    '{url:$url, name:$name, output_dir:$output_dir,
+      interval_hours:$interval, quality:$quality, date_after:$date_after}')
+
+  local resp
+  resp=$(curl -sf -X POST "$API/subscriptions" \
+    -H "Content-Type: application/json" \
+    -d "$payload") || { err "API call failed"; return; }
+
+  local id
+  id=$(echo "$resp" | jq -r '.id')
+  ok "Subscription added!  ID: $id"
+  echo -e "  Initial run started in background."
+  pause
+}
+
+# ── LIST SUBSCRIPTIONS ─────────────────────────────────────────────────────
+cmd_list() {
+  hdr "Subscriptions"
+  local data
+  data=$(api /subscriptions) || { err "API call failed"; return; }
+  local count
+  count=$(echo "$data" | jq 'length')
+  if [[ "$count" -eq 0 ]]; then warn "No subscriptions."; pause; return; fi
+
+  echo "$data" | jq -r '.[] | [.id, .name, .quality, (.interval_hours|tostring)+"h",
+    (if .enabled then "enabled" else "PAUSED" end), (.last_checked // "never")] | @tsv' \
+  | while IFS=$'\t' read -r id name quality interval status checked; do
+    local color="$GREEN"
+    [[ "$status" == "PAUSED" ]] && color="$YELLOW"
+    printf "  ${CYAN}%s${RESET}  ${BOLD}%-20s${RESET}  %-6s  %-5s  ${color}%-7s${RESET}  %s\n" \
+      "$id" "$name" "$quality" "$interval" "$status" "$checked"
+  done
+  echo
+  pause
+}
+
+# ── VIEW LOGS ──────────────────────────────────────────────────────────────
+cmd_logs() {
+  hdr "View Logs"
+  pick_sub || { pause; return; }
+  echo
+  read -rp "  Lines to show [default: 80]: " lines
+  lines=${lines:-80}
+  echo
+  hr
+  api "/subscriptions/$SUB_ID/log?lines=$lines" | jq -r '.log'
+  hr
+  pause
+}
+
+# ── TRIGGER MANUAL CHECK ───────────────────────────────────────────────────
+cmd_check() {
+  hdr "Trigger Manual Check"
+  pick_sub || { pause; return; }
+  local resp
+  resp=$(curl -sf -X POST "$API/subscriptions/$SUB_ID/check") || { err "API call failed"; return; }
+  ok "Check triggered for '$SUB_NAME'"
+  echo -e "  Use ${CYAN}View Logs${RESET} to follow progress."
+  pause
+}
+
+# ── JOB STATUS ─────────────────────────────────────────────────────────────
+cmd_jobs() {
+  hdr "Job Status"
+  local data
+  data=$(api /jobs) || { err "API call failed"; return; }
+
+  echo -e "${BOLD}  Running / Recent Jobs:${RESET}"
+  local jobs
+  jobs=$(echo "$data" | jq -r '.jobs[] |
+    [.job_id, .sub_name, .trigger, .status,
+     (.videos_found|tostring), (.videos_done|tostring), (.videos_failed|tostring),
+     .started_at] | @tsv')
+
+  if [[ -z "$jobs" ]]; then
+    warn "  No jobs in history."
+  else
+    printf "  ${BOLD}%-10s %-16s %-10s %-10s %5s %5s %5s  %s${RESET}\n" \
+      "ID" "Name" "Trigger" "Status" "Found" "Done" "Fail" "Started"
+    while IFS=$'\t' read -r jid name trigger status found done fail started; do
+      local color="$RESET"
+      [[ "$status" == "running"   ]] && color="$CYAN"
+      [[ "$status" == "completed" ]] && color="$GREEN"
+      [[ "$status" == "failed"    ]] && color="$RED"
+      printf "  ${color}%-10s %-16s %-10s %-10s %5s %5s %5s  %s${RESET}\n" \
+        "$jid" "$name" "$trigger" "$status" "$found" "$done" "$fail" "${started:0:19}"
+    done <<< "$jobs"
+  fi
+
+  echo
+  echo -e "${BOLD}  Upcoming Scheduled Runs:${RESET}"
+  echo "$data" | jq -r '.scheduled[] | "  \(.sub_name)  →  \(.next_run // "not scheduled")"'
+  echo
+  pause
+}
+
+# ── PAUSE / RESUME ─────────────────────────────────────────────────────────
+cmd_toggle() {
+  hdr "Pause / Resume Subscription"
+  pick_sub || { pause; return; }
+  local sub enabled
+  sub=$(api "/subscriptions/$SUB_ID")
+  enabled=$(echo "$sub" | jq -r '.enabled')
+  local new_state action
+  if [[ "$enabled" == "true" ]]; then
+    new_state="false"; action="Paused"
+  else
+    new_state="true"; action="Resumed"
+  fi
+  curl -sf -X PATCH "$API/subscriptions/$SUB_ID" \
+    -H "Content-Type: application/json" \
+    -d "{\"enabled\": $new_state}" >/dev/null || { err "API call failed"; return; }
+  ok "$action '$SUB_NAME'"
+  pause
+}
+
+# ── UPDATE SUBSCRIPTION ────────────────────────────────────────────────────
+cmd_update() {
+  hdr "Update Subscription"
+  pick_sub || { pause; return; }
+  echo
+  echo -e "  Updating ${BOLD}$SUB_NAME${RESET} (leave blank to keep current value)"
+  echo
+  read -rp "  interval_hours: " interval
+  read -rp "  quality (1080/720/480/best): " quality
+  read -rp "  date_after (e.g. today-30days): " date_after
+  echo
+
+  local payload="{}"
+  [[ -n "$interval"   ]] && payload=$(echo "$payload" | jq --argjson v "$interval" '.interval_hours=$v')
+  [[ -n "$quality"    ]] && payload=$(echo "$payload" | jq --arg v "$quality" '.quality=$v')
+  [[ -n "$date_after" ]] && payload=$(echo "$payload" | jq --arg v "$date_after" '.date_after=$v')
+
+  if [[ "$payload" == "{}" ]]; then warn "Nothing to update."; pause; return; fi
+
+  curl -sf -X PATCH "$API/subscriptions/$SUB_ID" \
+    -H "Content-Type: application/json" \
+    -d "$payload" >/dev/null || { err "API call failed"; return; }
+  ok "Updated '$SUB_NAME'"
+  pause
+}
+
+# ── DELETE SUBSCRIPTION ────────────────────────────────────────────────────
+cmd_delete() {
+  hdr "Delete Subscription"
+  pick_sub || { pause; return; }
+  echo
+  warn "This will remove the subscription (downloaded files are kept)."
+  read -rp "  Delete '$SUB_NAME'? [y/N]: " confirm
+  [[ "$confirm" =~ ^[Yy]$ ]] || { warn "Cancelled."; pause; return; }
+  curl -sf -X DELETE "$API/subscriptions/$SUB_ID" >/dev/null || { err "API call failed"; return; }
+  ok "Deleted '$SUB_NAME'"
+  pause
+}
+
+# ── REFRESH COOKIES ────────────────────────────────────────────────────────
+cmd_cookies() {
+  hdr "Refresh YouTube Cookies"
+  local src="$HOME/Downloads/cookies.txt"
+  if [[ ! -f "$src" ]]; then
+    err "File not found: $src"
+    echo
+    echo "  1. Open Chrome and log into YouTube"
+    echo "  2. Click the 'Get cookies.txt LOCALLY' extension"
+    echo "  3. Export — saves to ~/Downloads/cookies.txt"
+    echo "  4. Re-run this option"
+    pause; return
+  fi
+
+  local lines
+  lines=$(wc -l < "$src")
+  echo -e "  Found ${BOLD}$src${RESET} (${lines} lines)"
+  echo
+
+  local container
+  container=$(docker ps --filter name=ytdl --format "{{.Names}}" 2>/dev/null | head -1)
+  if [[ -z "$container" ]]; then
+    err "No ytdl container found.  Is Docker running?"
+    pause; return
+  fi
+
+  echo -e "  Container: ${BOLD}$container${RESET}"
+  read -rp "  Copy cookies into container? [y/N]: " confirm
+  [[ "$confirm" =~ ^[Yy]$ ]] || { warn "Cancelled."; pause; return; }
+
+  docker cp "$src" "$container:/data/cookies.txt" && ok "Cookies updated!" || err "Copy failed"
+  pause
+}
+
+# ── CONTAINER OPS ──────────────────────────────────────────────────────────
+cmd_container() {
+  hdr "Container Operations"
+  echo "  1) Show container status"
+  echo "  2) Show recent container logs (stderr/stdout)"
+  echo "  3) Restart container"
+  echo "  4) Update yt-dlp inside container"
+  echo "  5) Back"
+  echo
+  read -rp "  Choice: " c
+  case "$c" in
+    1)
+      docker ps --filter name=ytdl --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+      ;;
+    2)
+      local container
+      container=$(docker ps --filter name=ytdl --format "{{.Names}}" | head -1)
+      [[ -z "$container" ]] && { err "Container not found"; pause; return; }
+      docker logs --tail 50 "$container"
+      ;;
+    3)
+      local container
+      container=$(docker ps --filter name=ytdl --format "{{.Names}}" | head -1)
+      [[ -z "$container" ]] && { err "Container not found"; pause; return; }
+      read -rp "  Restart '$container'? [y/N]: " confirm
+      [[ "$confirm" =~ ^[Yy]$ ]] || { warn "Cancelled."; pause; return; }
+      docker restart "$container" && ok "Restarted" || err "Failed"
+      ;;
+    4)
+      local container
+      container=$(docker ps --filter name=ytdl --format "{{.Names}}" | head -1)
+      [[ -z "$container" ]] && { err "Container not found"; pause; return; }
+      echo "  Updating yt-dlp..."
+      docker exec "$container" pip install -q --upgrade yt-dlp && ok "yt-dlp updated" || err "Failed"
+      ;;
+  esac
+  pause
+}
+
+# ── HEALTH ─────────────────────────────────────────────────────────────────
+cmd_health() {
+  hdr "Health Check"
+  local resp
+  resp=$(curl -sf "$API/health") && ok "API is up: $resp" || err "API not reachable at $API"
+  echo
+  docker ps --filter name=ytdl --format "  Container: {{.Names}}  ({{.Status}})" 2>/dev/null \
+    || warn "docker not available or no container running"
+  pause
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# MAIN MENU
+# ══════════════════════════════════════════════════════════════════════════
+main_menu() {
+  while true; do
+    clear
+    echo -e "${BOLD}${CYAN}"
+    echo "  ╔═══════════════════════════════════╗"
+    echo "  ║        yt-dlp Manager             ║"
+    echo "  ╚═══════════════════════════════════╝"
+    echo -e "${RESET}"
+    echo -e "  ${YELLOW}Subscriptions${RESET}"
+    echo    "    1)  Add subscription"
+    echo    "    2)  List subscriptions"
+    echo    "    3)  Trigger manual check"
+    echo    "    4)  View logs"
+    echo    "    5)  Pause / Resume"
+    echo    "    6)  Update settings"
+    echo    "    7)  Delete subscription"
+    echo
+    echo -e "  ${YELLOW}Monitoring${RESET}"
+    echo    "    8)  Job status"
+    echo    "    9)  Health check"
+    echo
+    echo -e "  ${YELLOW}Maintenance${RESET}"
+    echo    "    10) Refresh YouTube cookies"
+    echo    "    11) Container operations"
+    echo
+    echo    "    q)  Quit"
+    echo
+    read -rp "  Choice: " opt
+    case "$opt" in
+      1)  cmd_add       ;;
+      2)  cmd_list      ;;
+      3)  cmd_check     ;;
+      4)  cmd_logs      ;;
+      5)  cmd_toggle    ;;
+      6)  cmd_update    ;;
+      7)  cmd_delete    ;;
+      8)  cmd_jobs      ;;
+      9)  cmd_health    ;;
+      10) cmd_cookies   ;;
+      11) cmd_container ;;
+      q|Q) echo; ok "Bye!"; echo; exit 0 ;;
+      *) warn "Unknown option" ;;
+    esac
+  done
+}
+
+# ── entry point ────────────────────────────────────────────────────────────
+check_api
+main_menu
