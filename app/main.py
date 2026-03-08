@@ -21,10 +21,6 @@ _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
 
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
-
 def init_db():
     os.makedirs(ARCHIVES_DIR, exist_ok=True)
     os.makedirs(LOGS_DIR, exist_ok=True)
@@ -67,11 +63,6 @@ def all_subs() -> list[dict]:
     conn.close()
     return [dict(r) for r in rows]
 
-
-# ---------------------------------------------------------------------------
-# yt-dlp helpers
-# ---------------------------------------------------------------------------
-
 FORMAT_MAP = {
     "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
     "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
@@ -113,6 +104,10 @@ def _run_ytdlp(sub: dict, skip_download: bool = False, date_after: Optional[str]
 
     if date_after:
         cmd += ["--dateafter", date_after]
+        # Stop scanning as soon as we hit a video older than date_after.
+        # YouTube channels are newest-first, so this avoids paging through
+        # thousands of old videos unnecessarily.
+        cmd.append("--break-on-reject")
 
     cookies_path = "/data/cookies.txt"
     if os.path.exists(cookies_path):
@@ -132,10 +127,6 @@ def _run_ytdlp(sub: dict, skip_download: bool = False, date_after: Optional[str]
 
     return result.returncode
 
-
-# ---------------------------------------------------------------------------
-# Job tracking
-# ---------------------------------------------------------------------------
 
 def _make_job_id() -> str:
     return str(uuid.uuid4())[:8]
@@ -174,16 +165,11 @@ def run_subscription(sub_id: str, trigger: str = "scheduler", date_after: Option
 
     try:
         effective_date = date_after or sub.get("date_after")
-
-        # Skip the full archive init when date_after is set.
-        # Scanning thousands of old videos just to build an archive takes
-        # hours and causes YouTube to rotate cookies mid-run.
-        # With date_after, yt-dlp only sees recent videos so the init is
-        # unnecessary — the archive will build naturally over time.
+        # Skip archive init when date_after is set — --break-on-reject means
+        # yt-dlp stops at the first old video, so we never scan the full history.
         needs_init = not sub["initialized"] and not sub["backfill"]
         if needs_init and not effective_date:
-            _run_ytdlp(sub, skip_download=True, date_after=None)
-
+            _run_ytdlp(sub, skip_download=True)
         rc = _run_ytdlp(sub, date_after=effective_date)
     except Exception as e:
         rc = -1
@@ -201,10 +187,6 @@ def run_subscription(sub_id: str, trigger: str = "scheduler", date_after: Option
     conn.close()
 
 
-# ---------------------------------------------------------------------------
-# Scheduler helpers
-# ---------------------------------------------------------------------------
-
 def schedule_sub(sub_id: str, interval_hours: float):
     job_id = f"sub_{sub_id}"
     if scheduler.get_job(job_id):
@@ -221,10 +203,6 @@ def unschedule_sub(sub_id: str):
         scheduler.remove_job(job_id)
 
 
-# ---------------------------------------------------------------------------
-# App lifecycle
-# ---------------------------------------------------------------------------
-
 @app.on_event("startup")
 def startup():
     init_db()
@@ -238,10 +216,6 @@ def startup():
 def shutdown():
     scheduler.shutdown(wait=False)
 
-
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
 
 class SubCreate(BaseModel):
     url:            str
@@ -261,10 +235,6 @@ class SubUpdate(BaseModel):
     enabled:        Optional[bool]  = None
     date_after:     Optional[str]   = None
 
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
 
 @app.get("/health")
 def health():
