@@ -1,8 +1,9 @@
 FROM python:3.12-slim
 
-# ffmpeg is required by yt-dlp to merge separate video+audio streams
+# ffmpeg required by yt-dlp to merge video+audio streams
+# nodejs used by yt-dlp as a JavaScript runtime (required for some YouTube formats)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

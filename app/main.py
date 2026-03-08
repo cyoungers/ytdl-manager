@@ -99,11 +99,15 @@ def _run_ytdlp(sub: dict, skip_download: bool = False, date_after: Optional[str]
         "--format",           fmt,
         "--merge-output-format", "mp4",
         "--no-abort-on-error",
-        "--retries",          "5",
-        "--fragment-retries", "5",
-        "--concurrent-fragments", "4",
+        "--retries",             "5",
+        "--fragment-retries",    "5",
+        "--concurrent-fragments","2",        # reduced to avoid rate limiting
+        "--sleep-requests",      "1.5",      # pause between metadata requests
+        "--sleep-interval",      "2",        # pause between downloads
+        "--max-sleep-interval",  "5",        # random upper bound on sleep
         "--newline",
     ]
+
 
     if skip_download:
         cmd.append("--skip-download")
@@ -111,6 +115,11 @@ def _run_ytdlp(sub: dict, skip_download: bool = False, date_after: Optional[str]
     effective_date = date_after or sub.get("date_after")
     if effective_date:
         cmd += ["--dateafter", effective_date]
+
+    # Use cookies file if present (helps avoid bot detection)
+    cookies_path = "/data/cookies.txt"
+    if os.path.exists(cookies_path):
+        cmd += ["--cookies", cookies_path]
 
     cmd.append(sub["url"])
 
@@ -409,10 +418,6 @@ def list_jobs(
         description="Filter by status: running | completed | failed"
     )
 ):
-    """
-    Returns all tracked download jobs (running + history since container start)
-    plus the next scheduled run time per subscription.
-    """
     with _jobs_lock:
         jobs = list(_jobs.values())
 
