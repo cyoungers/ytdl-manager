@@ -210,6 +210,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "--fragment-retries",    "5",
         "--concurrent-fragments","2",
         "--js-runtimes",         "node",
+        "--remote-components",   "ejs:github",
         "--newline",
     ]
 
