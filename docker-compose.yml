@@ -1,0 +1,23 @@
+services:
+  ytdl-manager:
+    build: .
+    container_name: ytdl-manager
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persistent data: SQLite DB, download archives, logs
+      - ytdl-data:/data
+      # Where videos actually land on the host.
+      # Change the left side to wherever you want downloads stored.
+      - /mnt/nas/video/ytdl-manager:/downloads
+    environment:
+      - TZ=America/Chicago   # Change to your timezone
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  ytdl-data:
