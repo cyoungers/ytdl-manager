@@ -335,7 +335,9 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
             log.write(f"Found {len(new_ids)} new video(s)\n")
 
         overall_rc = 0
-        for video_id in new_ids:
+        for i, video_id in enumerate(new_ids):
+            if i > 0:
+                import time; time.sleep(5)  # avoid rate limiting between downloads
             with open(log_path, "a") as log:
                 log.write(f"\n--- Downloading {video_id} ---\n")
             rc = _download_video(sub, video_id, log_path)
