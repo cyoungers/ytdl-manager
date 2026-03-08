@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 app = FastAPI(title="yt-dlp Manager")
@@ -16,6 +16,10 @@ scheduler = BackgroundScheduler()
 DB_PATH = "/data/subscriptions.db"
 ARCHIVES_DIR = "/data/archives"
 LOGS_DIR = "/data/logs"
+
+# In-memory job tracker: job_id -> status dict
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -28,19 +32,23 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS subscriptions (
-            id            TEXT PRIMARY KEY,
-            url           TEXT NOT NULL,
-            name          TEXT,
-            output_dir    TEXT NOT NULL,
+            id             TEXT PRIMARY KEY,
+            url            TEXT NOT NULL,
+            name           TEXT,
+            output_dir     TEXT NOT NULL,
             interval_hours REAL NOT NULL DEFAULT 6.0,
-            quality       TEXT NOT NULL DEFAULT '1080',
-            backfill      INTEGER NOT NULL DEFAULT 0,
-            enabled       INTEGER NOT NULL DEFAULT 1,
-            initialized   INTEGER NOT NULL DEFAULT 0,
-            last_checked  TEXT,
-            created_at    TEXT NOT NULL
+            quality        TEXT NOT NULL DEFAULT '1080',
+            backfill       INTEGER NOT NULL DEFAULT 0,
+            date_after     TEXT,
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            initialized    INTEGER NOT NULL DEFAULT 0,
+            last_checked   TEXT,
+            created_at     TEXT NOT NULL
         )
     """)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(subscriptions)").fetchall()]
+    if "date_after" not in cols:
+        conn.execute("ALTER TABLE subscriptions ADD COLUMN date_after TEXT")
     conn.commit()
     conn.close()
 
@@ -75,12 +83,7 @@ FORMAT_MAP = {
 OUTPUT_TEMPLATE = "%(title)s_(%(upload_date>%Y_%m_%d)s)_[%(id)s].%(ext)s"
 
 
-def _run_ytdlp(sub: dict, skip_download: bool = False):
-    """
-    Core yt-dlp invocation.
-    skip_download=True populates the archive without downloading (used on
-    first run when backfill=False so we don't re-download historical videos).
-    """
+def _run_ytdlp(sub: dict, skip_download: bool = False, date_after: Optional[str] = None) -> int:
     output_dir = sub["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
 
@@ -91,44 +94,90 @@ def _run_ytdlp(sub: dict, skip_download: bool = False):
 
     cmd = [
         "yt-dlp",
-        "--download-archive", archive_path,   # never re-download
+        "--download-archive", archive_path,
         "--output",           output_tmpl,
         "--format",           fmt,
         "--merge-output-format", "mp4",
-        "--no-abort-on-error",                # keep going if one video fails
+        "--no-abort-on-error",
         "--retries",          "5",
         "--fragment-retries", "5",
         "--concurrent-fragments", "4",
-        "--newline",                          # flush output line-by-line
+        "--newline",
     ]
 
     if skip_download:
         cmd.append("--skip-download")
 
+    effective_date = date_after or sub.get("date_after")
+    if effective_date:
+        cmd += ["--dateafter", effective_date]
+
     cmd.append(sub["url"])
+
+    label = "[ARCHIVE INIT]" if skip_download else "[DOWNLOAD RUN]"
+    if effective_date:
+        label += f" date_after={effective_date}"
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     with open(log_path, "a") as log:
-        log.write(f"\n{'='*60}\n{timestamp}  {'[ARCHIVE INIT]' if skip_download else '[DOWNLOAD RUN]'}\n{'='*60}\n")
+        log.write(f"\n{'='*60}\n{timestamp}  {label}\n{'='*60}\n")
         result = subprocess.run(cmd, stdout=log, stderr=log, text=True)
         log.write(f"\nExit code: {result.returncode}\n")
 
     return result.returncode
 
 
-def run_subscription(sub_id: str):
-    """Called by the scheduler (and on manual trigger)."""
+# ---------------------------------------------------------------------------
+# Job tracking
+# ---------------------------------------------------------------------------
+
+def _make_job_id() -> str:
+    return str(uuid.uuid4())[:8]
+
+
+def _job_start(job_id: str, sub_id: str, sub_name: str, trigger: str, date_after: Optional[str] = None):
+    with _jobs_lock:
+        _jobs[job_id] = {
+            "job_id":      job_id,
+            "sub_id":      sub_id,
+            "sub_name":    sub_name,
+            "trigger":     trigger,
+            "date_after":  date_after,
+            "status":      "running",
+            "started_at":  datetime.now(timezone.utc).isoformat(),
+            "finished_at": None,
+            "exit_code":   None,
+        }
+
+
+def _job_finish(job_id: str, exit_code: int):
+    with _jobs_lock:
+        if job_id in _jobs:
+            _jobs[job_id]["status"]      = "completed" if exit_code == 0 else "failed"
+            _jobs[job_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+            _jobs[job_id]["exit_code"]   = exit_code
+
+
+def run_subscription(sub_id: str, trigger: str = "scheduler", date_after: Optional[str] = None):
     sub = get_sub(sub_id)
     if not sub or not sub["enabled"]:
         return
 
-    # First-ever run: if backfill is off, populate archive without downloading
-    if not sub["initialized"] and not sub["backfill"]:
-        _run_ytdlp(sub, skip_download=True)
+    job_id = _make_job_id()
+    _job_start(job_id, sub_id, sub["name"], trigger, date_after)
 
-    _run_ytdlp(sub)
+    try:
+        if not sub["initialized"] and not sub["backfill"]:
+            _run_ytdlp(sub, skip_download=True, date_after=date_after)
+        rc = _run_ytdlp(sub, date_after=date_after)
+    except Exception as e:
+        rc = -1
+        log_path = os.path.join(LOGS_DIR, f"{sub_id}.log")
+        with open(log_path, "a") as log:
+            log.write(f"\nException: {e}\n")
 
-    # Mark initialized + update last_checked
+    _job_finish(job_id, rc)
+
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         "UPDATE subscriptions SET initialized=1, last_checked=? WHERE id=?",
@@ -151,7 +200,7 @@ def schedule_sub(sub_id: str, interval_hours: float):
         "interval",
         hours=interval_hours,
         id=job_id,
-        args=[sub_id],
+        args=[sub_id, "scheduler", None],
         replace_existing=True,
     )
 
@@ -170,7 +219,6 @@ def unschedule_sub(sub_id: str):
 def startup():
     init_db()
     scheduler.start()
-    # Re-schedule any existing enabled subscriptions after container restart
     for sub in all_subs():
         if sub["enabled"]:
             schedule_sub(sub["id"], sub["interval_hours"])
@@ -187,12 +235,12 @@ def shutdown():
 
 class SubCreate(BaseModel):
     url:            str
-    name:           Optional[str] = None
+    name:           Optional[str]  = None
     output_dir:     str
-    interval_hours: float = 6.0
-    quality:        str   = "1080"   # 1080 | 720 | 480 | best
-    backfill:       bool  = False    # True  = download all history on first run
-                                     # False = only download videos posted from now on
+    interval_hours: float          = 6.0
+    quality:        str            = "1080"
+    backfill:       bool           = False
+    date_after:     Optional[str]  = None
 
 
 class SubUpdate(BaseModel):
@@ -201,10 +249,11 @@ class SubUpdate(BaseModel):
     interval_hours: Optional[float] = None
     quality:        Optional[str]   = None
     enabled:        Optional[bool]  = None
+    date_after:     Optional[str]   = None
 
 
 # ---------------------------------------------------------------------------
-# Routes
+# Routes — health
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
@@ -212,14 +261,18 @@ def health():
     return {"status": "ok"}
 
 
+# ---------------------------------------------------------------------------
+# Routes — subscriptions
+# ---------------------------------------------------------------------------
+
 @app.post("/subscriptions", status_code=201)
 def add_subscription(body: SubCreate):
     sub_id = str(uuid.uuid4())[:8]
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         """INSERT INTO subscriptions
-           (id, url, name, output_dir, interval_hours, quality, backfill, created_at)
-           VALUES (?,?,?,?,?,?,?,?)""",
+           (id, url, name, output_dir, interval_hours, quality, backfill, date_after, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
         (
             sub_id,
             body.url,
@@ -228,6 +281,7 @@ def add_subscription(body: SubCreate):
             body.interval_hours,
             body.quality,
             int(body.backfill),
+            body.date_after,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
@@ -235,9 +289,11 @@ def add_subscription(body: SubCreate):
     conn.close()
 
     schedule_sub(sub_id, body.interval_hours)
-
-    # Kick off the first run in background so the POST returns immediately
-    threading.Thread(target=run_subscription, args=(sub_id,), daemon=True).start()
+    threading.Thread(
+        target=run_subscription,
+        args=(sub_id, "initial", body.date_after),
+        daemon=True
+    ).start()
 
     return {
         "id":      sub_id,
@@ -273,7 +329,6 @@ def update_subscription(sub_id: str, body: SubUpdate):
     if not updates:
         raise HTTPException(400, "No fields to update")
 
-    # Convert enabled bool → int for SQLite
     if "enabled" in updates:
         updates["enabled"] = int(updates["enabled"])
 
@@ -285,7 +340,6 @@ def update_subscription(sub_id: str, body: SubUpdate):
     conn.commit()
     conn.close()
 
-    # Re-schedule if timing or enabled state changed
     sub = get_sub(sub_id)
     if sub["enabled"]:
         schedule_sub(sub_id, sub["interval_hours"])
@@ -308,11 +362,28 @@ def delete_subscription(sub_id: str):
 
 
 @app.post("/subscriptions/{sub_id}/check")
-def trigger_check(sub_id: str):
+def trigger_check(
+    sub_id: str,
+    date_after: Optional[str] = Query(
+        default=None,
+        description=(
+            "Only download videos uploaded on/after this date. "
+            "Accepts yt-dlp date strings: YYYYMMDD or today-Ndays (e.g. today-7days)."
+        )
+    ),
+):
     if not get_sub(sub_id):
         raise HTTPException(404, "Subscription not found")
-    threading.Thread(target=run_subscription, args=(sub_id,), daemon=True).start()
-    return {"message": "Download triggered in background", "id": sub_id}
+    threading.Thread(
+        target=run_subscription,
+        args=(sub_id, "manual", date_after),
+        daemon=True
+    ).start()
+    return {
+        "message":    "Download triggered in background",
+        "id":         sub_id,
+        "date_after": date_after,
+    }
 
 
 @app.get("/subscriptions/{sub_id}/log")
@@ -325,3 +396,54 @@ def get_log(sub_id: str, lines: int = 100):
     with open(log_path) as f:
         content = f.readlines()
     return {"log": "".join(content[-lines:])}
+
+
+# ---------------------------------------------------------------------------
+# Routes — jobs
+# ---------------------------------------------------------------------------
+
+@app.get("/jobs")
+def list_jobs(
+    status: Optional[str] = Query(
+        default=None,
+        description="Filter by status: running | completed | failed"
+    )
+):
+    """
+    Returns all tracked download jobs (running + history since container start)
+    plus the next scheduled run time per subscription.
+    """
+    with _jobs_lock:
+        jobs = list(_jobs.values())
+
+    if status:
+        jobs = [j for j in jobs if j["status"] == status]
+
+    jobs.sort(key=lambda j: (j["status"] != "running", j["started_at"]))
+
+    scheduled = []
+    for job in scheduler.get_jobs():
+        if job.id.startswith("sub_"):
+            sub_id = job.id[4:]
+            sub = get_sub(sub_id)
+            scheduled.append({
+                "sub_id":   sub_id,
+                "sub_name": sub["name"] if sub else sub_id,
+                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+            })
+
+    scheduled.sort(key=lambda j: j["next_run"] or "")
+
+    return {
+        "jobs":      jobs,
+        "scheduled": scheduled,
+    }
+
+
+@app.get("/jobs/{job_id}")
+def get_job(job_id: str):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return job
