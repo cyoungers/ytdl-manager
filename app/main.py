@@ -51,6 +51,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def get_sub(sub_id: str) -> Optional[dict]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -103,16 +104,15 @@ def _run_ytdlp(sub: dict, skip_download: bool = False, date_after: Optional[str]
         "--sleep-requests",      "1.5",
         "--sleep-interval",      "2",
         "--max-sleep-interval",  "5",
-        "--js-runtimes",         "node",   # explicitly use node.js runtime
+        "--js-runtimes",         "node",
         "--newline",
     ]
 
     if skip_download:
         cmd.append("--skip-download")
 
-    effective_date = date_after or sub.get("date_after")
-    if effective_date:
-        cmd += ["--dateafter", effective_date]
+    if date_after:
+        cmd += ["--dateafter", date_after]
 
     cookies_path = "/data/cookies.txt"
     if os.path.exists(cookies_path):
@@ -121,8 +121,8 @@ def _run_ytdlp(sub: dict, skip_download: bool = False, date_after: Optional[str]
     cmd.append(sub["url"])
 
     label = "[ARCHIVE INIT]" if skip_download else "[DOWNLOAD RUN]"
-    if effective_date:
-        label += f" date_after={effective_date}"
+    if date_after:
+        label += f" date_after={date_after}"
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     with open(log_path, "a") as log:
@@ -173,9 +173,18 @@ def run_subscription(sub_id: str, trigger: str = "scheduler", date_after: Option
     _job_start(job_id, sub_id, sub["name"], trigger, date_after)
 
     try:
-        if not sub["initialized"] and not sub["backfill"]:
-            _run_ytdlp(sub, skip_download=True, date_after=date_after)
-        rc = _run_ytdlp(sub, date_after=date_after)
+        effective_date = date_after or sub.get("date_after")
+
+        # Skip the full archive init when date_after is set.
+        # Scanning thousands of old videos just to build an archive takes
+        # hours and causes YouTube to rotate cookies mid-run.
+        # With date_after, yt-dlp only sees recent videos so the init is
+        # unnecessary — the archive will build naturally over time.
+        needs_init = not sub["initialized"] and not sub["backfill"]
+        if needs_init and not effective_date:
+            _run_ytdlp(sub, skip_download=True, date_after=None)
+
+        rc = _run_ytdlp(sub, date_after=effective_date)
     except Exception as e:
         rc = -1
         with open(os.path.join(LOGS_DIR, f"{sub_id}.log"), "a") as log:
@@ -254,17 +263,13 @@ class SubUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Routes — health
+# Routes
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
-# ---------------------------------------------------------------------------
-# Routes — subscriptions
-# ---------------------------------------------------------------------------
 
 @app.post("/subscriptions", status_code=201)
 def add_subscription(body: SubCreate):
@@ -314,9 +319,8 @@ def update_subscription(sub_id: str, body: SubUpdate):
     if "enabled" in updates:
         updates["enabled"] = int(updates["enabled"])
     set_clause = ", ".join(f"{k}=?" for k in updates)
-    values     = list(updates.values()) + [sub_id]
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(f"UPDATE subscriptions SET {set_clause} WHERE id=?", values)
+    conn.execute(f"UPDATE subscriptions SET {set_clause} WHERE id=?", list(updates.values()) + [sub_id])
     conn.commit()
     conn.close()
     sub = get_sub(sub_id)
@@ -362,10 +366,6 @@ def get_log(sub_id: str, lines: int = 100):
         content = f.readlines()
     return {"log": "".join(content[-lines:])}
 
-
-# ---------------------------------------------------------------------------
-# Routes — jobs
-# ---------------------------------------------------------------------------
 
 @app.get("/jobs")
 def list_jobs(status: Optional[str] = Query(default=None, description="Filter: running | completed | failed")):
