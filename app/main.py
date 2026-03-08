@@ -22,6 +22,8 @@ LOGS_DIR = "/data/logs"
 
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
+_running_subs: set[str] = set()
+_running_subs_lock = threading.Lock()
 
 RSS_NS = {
     "atom":   "http://www.w3.org/2005/Atom",
@@ -304,68 +306,78 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
     if not sub or not sub["enabled"]:
         return
 
-    job_id   = _make_job_id()
-    log_path = os.path.join(LOGS_DIR, f"{sub_id}.log")
-    _job_start(job_id, sub_id, sub["name"], trigger)
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    with open(log_path, "a") as log:
-        log.write(f"\n{'='*60}\n{timestamp}  [{trigger.upper()}]\n{'='*60}\n")
+    # Prevent concurrent runs for the same subscription
+    with _running_subs_lock:
+        if sub_id in _running_subs:
+            return  # already running, skip
+        _running_subs.add(sub_id)
 
     try:
-        if _is_playlist(sub["url"]):
-            # ---- Playlist mode: yt-dlp flat scan for IDs ----
-            new_ids = _get_playlist_new_ids(sub, log_path)
-        else:
-            # ---- Channel mode: RSS feed for IDs (no auth needed) ----
-            channel_id = _resolve_channel_id(sub)
-            if not channel_id:
-                with open(log_path, "a") as log:
-                    log.write("ERROR: Could not resolve channel ID\n")
-                _job_finish(job_id, 1)
-                return
+        job_id   = _make_job_id()
+        log_path = os.path.join(LOGS_DIR, f"{sub_id}.log")
+        _job_start(job_id, sub_id, sub["name"], trigger)
 
-            rss_ids  = _fetch_rss_video_ids(channel_id)
-            archive  = _load_archive(sub_id)
-            new_ids  = [vid for vid in rss_ids if vid not in archive]
-
-        _job_update(job_id, videos_found=len(new_ids))
-
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         with open(log_path, "a") as log:
-            log.write(f"Found {len(new_ids)} new video(s)\n")
+            log.write(f"\n{'='*60}\n{timestamp}  [{trigger.upper()}]\n{'='*60}\n")
 
-        overall_rc = 0
-        for i, video_id in enumerate(new_ids):
-            if i > 0:
-                import time; time.sleep(5)  # avoid rate limiting between downloads
-            with open(log_path, "a") as log:
-                log.write(f"\n--- Downloading {video_id} ---\n")
-            rc = _download_video(sub, video_id, log_path)
-            if rc == 0:
-                _job_update(job_id,
-                            videos_done=_jobs[job_id]["videos_done"] + 1)
+        try:
+            if _is_playlist(sub["url"]):
+                new_ids = _get_playlist_new_ids(sub, log_path)
             else:
-                overall_rc = rc
-                _job_update(job_id,
-                            videos_failed=_jobs[job_id]["videos_failed"] + 1)
+                channel_id = _resolve_channel_id(sub)
+                if not channel_id:
+                    with open(log_path, "a") as log:
+                        log.write("ERROR: Could not resolve channel ID\n")
+                    _job_finish(job_id, 1)
+                    return
 
-    except Exception as e:
-        overall_rc = -1
+                rss_ids  = _fetch_rss_video_ids(channel_id)
+                archive  = _load_archive(sub_id)
+                new_ids  = [vid for vid in rss_ids if vid not in archive]
+
+            _job_update(job_id, videos_found=len(new_ids))
+
+            with open(log_path, "a") as log:
+                log.write(f"Found {len(new_ids)} new video(s)\n")
+
+            import time
+            overall_rc = 0
+            for i, video_id in enumerate(new_ids):
+                if i > 0:
+                    time.sleep(5)  # avoid rate limiting between downloads
+                with open(log_path, "a") as log:
+                    log.write(f"\n--- Downloading {video_id} ---\n")
+                rc = _download_video(sub, video_id, log_path)
+                if rc == 0:
+                    _job_update(job_id,
+                                videos_done=_jobs[job_id]["videos_done"] + 1)
+                else:
+                    overall_rc = rc
+                    _job_update(job_id,
+                                videos_failed=_jobs[job_id]["videos_failed"] + 1)
+
+        except Exception as e:
+            overall_rc = -1
+            with open(log_path, "a") as log:
+                log.write(f"\nException: {e}\n")
+
+        _job_finish(job_id, overall_rc)
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "UPDATE subscriptions SET initialized=1, last_checked=? WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(), sub_id)
+        )
+        conn.commit()
+        conn.close()
+
         with open(log_path, "a") as log:
-            log.write(f"\nException: {e}\n")
+            log.write(f"Run complete. Exit code: {overall_rc}\n")
 
-    _job_finish(job_id, overall_rc)
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        "UPDATE subscriptions SET initialized=1, last_checked=? WHERE id=?",
-        (datetime.now(timezone.utc).isoformat(), sub_id)
-    )
-    conn.commit()
-    conn.close()
-
-    with open(log_path, "a") as log:
-        log.write(f"Run complete. Exit code: {overall_rc}\n")
+    finally:
+        with _running_subs_lock:
+            _running_subs.discard(sub_id)
 
 
 # ---------------------------------------------------------------------------
