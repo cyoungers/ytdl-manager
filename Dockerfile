@@ -14,11 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir bgutil-ytdlp-pot-provider
 
 # Clone and build the bgutil server (expected at /root/bgutil-ytdlp-pot-provider/server)
-RUN git clone https://github.com/nicholasgasior/bgutil-ytdlp-pot-provider \
+RUN git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider \
       /root/bgutil-ytdlp-pot-provider \
     && cd /root/bgutil-ytdlp-pot-provider/server \
     && npm install \
-    && npm run build 2>/dev/null || true
+    && npm run build
 
 COPY app/ .
 COPY start.sh .
