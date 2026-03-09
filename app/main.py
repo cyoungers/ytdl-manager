@@ -214,10 +214,10 @@ def _append_archive(sub_id: str, video_id: str):
 # ---------------------------------------------------------------------------
 
 FORMAT_MAP = {
-    "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-    "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-    "480":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best",
-    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+    "1080": "bestvideo[height<=1080][ext=mp4][protocol!=m3u8][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8][protocol!=m3u8_native]/bestvideo[height<=1080][protocol!=m3u8][protocol!=m3u8_native]+bestaudio[protocol!=m3u8][protocol!=m3u8_native]/best[height<=1080][protocol!=m3u8]/best",
+    "720":  "bestvideo[height<=720][ext=mp4][protocol!=m3u8][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8][protocol!=m3u8_native]/bestvideo[height<=720][protocol!=m3u8][protocol!=m3u8_native]+bestaudio[protocol!=m3u8][protocol!=m3u8_native]/best[height<=720][protocol!=m3u8]/best",
+    "480":  "bestvideo[height<=480][ext=mp4][protocol!=m3u8][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8][protocol!=m3u8_native]/best[height<=480][protocol!=m3u8]/best",
+    "best": "bestvideo[ext=mp4][protocol!=m3u8][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8][protocol!=m3u8_native]/bestvideo[protocol!=m3u8][protocol!=m3u8_native]+bestaudio[protocol!=m3u8][protocol!=m3u8_native]/best",
 }
 
 OUTPUT_TEMPLATE = "%(title)s_(%(upload_date>%Y_%m_%d)s)_[%(id)s].%(ext)s"
