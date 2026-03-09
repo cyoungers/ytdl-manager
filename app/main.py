@@ -98,8 +98,13 @@ def _extract_channel_id_from_url(url: str) -> Optional[str]:
 
 def _resolve_channel_id(sub: dict) -> Optional[str]:
     """
-    Return the UC... channel ID for a subscription, resolving @handles via
-    yt-dlp if needed. Caches result in the DB so we only resolve once.
+    Return the UC... channel ID for a subscription.
+    Tries (in order):
+      1. Already cached in DB
+      2. Extract directly from URL (e.g. /channel/UC...)
+      3. Scrape the YouTube channel page HTML (works for @handles, /c/, /user/)
+      4. Fall back to yt-dlp --print channel_id
+    Caches result in the DB so we only resolve once.
     """
     if sub.get("channel_id"):
         return sub["channel_id"]
@@ -107,7 +112,31 @@ def _resolve_channel_id(sub: dict) -> Optional[str]:
     channel_id = _extract_channel_id_from_url(sub["url"])
 
     if not channel_id:
-        # Use yt-dlp to resolve @handle → channel ID (fast, single request)
+        # Scrape the channel page — YouTube embeds the UC... ID in the HTML
+        try:
+            req = urllib.request.Request(
+                sub["url"],
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                       "Chrome/120.0.0.0 Safari/537.36"}
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+            # YouTube embeds channel ID in several places in the HTML
+            for pattern in [
+                r'"channelId":"(UC[\w-]+)"',
+                r'"externalId":"(UC[\w-]+)"',
+                r'channel/(UC[\w-]+)',
+            ]:
+                m = re.search(pattern, html)
+                if m:
+                    channel_id = m.group(1)
+                    break
+        except Exception:
+            pass
+
+    if not channel_id:
+        # Last resort: yt-dlp (slow, may be rate-limited)
         try:
             result = subprocess.run(
                 ["yt-dlp", "--flat-playlist", "--playlist-items", "1",
