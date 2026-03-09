@@ -1,19 +1,43 @@
 #!/bin/bash
-# Start the bgutil PO token server in the background, then start the app
+# Start the bgutil PO token server, then start the app
 
-# Find the bgutil server script
-BGUTIL_SERVER=$(python3 -c "import bgutil_ytdlp_pot_provider; import os; print(os.path.join(os.path.dirname(bgutil_ytdlp_pot_provider.__file__), 'server.js'))" 2>/dev/null)
+# Find bgutil server script location
+BGUTIL_DIR=$(pip show bgutil-ytdlp-pot-provider 2>/dev/null | grep Location | awk '{print $2}')
+BGUTIL_SERVER=""
 
-if [ -n "$BGUTIL_SERVER" ] && [ -f "$BGUTIL_SERVER" ]; then
-    echo "Starting bgutil PO token server from: $BGUTIL_SERVER"
-    node "$BGUTIL_SERVER" &
-    BGUTIL_PID=$!
-    echo "bgutil server started with PID $BGUTIL_PID"
-    # Give it a moment to start
-    sleep 2
-else
-    echo "WARNING: bgutil server script not found, PO tokens will not be available"
+# Search common locations
+for candidate in \
+    "$BGUTIL_DIR/bgutil_ytdlp_pot_provider/server.js" \
+    "$BGUTIL_DIR/bgutil-ytdlp-pot-provider/server.js" \
+    "/usr/local/lib/python3.12/site-packages/bgutil_ytdlp_pot_provider/server.js" \
+    "/usr/local/lib/python3.12/site-packages/bgutil-ytdlp-pot-provider/server.js"
+do
+    if [ -f "$candidate" ]; then
+        BGUTIL_SERVER="$candidate"
+        break
+    fi
+done
+
+# If not found by path, try find
+if [ -z "$BGUTIL_SERVER" ]; then
+    BGUTIL_SERVER=$(find /usr/local/lib -name "server.js" -path "*/bgutil*" 2>/dev/null | head -1)
 fi
 
-# Start the main app
+if [ -n "$BGUTIL_SERVER" ]; then
+    echo "Starting bgutil PO token server: $BGUTIL_SERVER"
+    SERVER_DIR=$(dirname "$BGUTIL_SERVER")
+    # Install node deps if needed
+    if [ -f "$SERVER_DIR/package.json" ] && [ ! -d "$SERVER_DIR/node_modules" ]; then
+        echo "Installing bgutil node dependencies..."
+        cd "$SERVER_DIR" && npm install --silent
+    fi
+    node "$BGUTIL_SERVER" &
+    echo "bgutil server started (PID $!)"
+    sleep 2
+else
+    echo "WARNING: bgutil server.js not found — PO tokens unavailable"
+    find /usr/local/lib -name "*.js" -path "*/bgutil*" 2>/dev/null | head -5
+fi
+
+cd /app
 exec uvicorn main:app --host 0.0.0.0 --port 8080
