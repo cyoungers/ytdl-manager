@@ -243,7 +243,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "--sleep-requests",      "2",
         "--sleep-interval",      "3",
         "--max-sleep-interval",  "8",
-        "--extractor-args",      "youtube:player_client=ios,mweb,web",
+        "--extractor-args",      "youtube:player_client=android,web",
         "--js-runtimes",         "node",
         "--remote-components",   "ejs:github",
         "--newline",
