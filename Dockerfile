@@ -18,7 +18,7 @@ RUN git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider \
       /root/bgutil-ytdlp-pot-provider \
     && cd /root/bgutil-ytdlp-pot-provider/server \
     && npm install \
-    && npm run build
+    && npx tsc
 
 COPY app/ .
 COPY start.sh .
