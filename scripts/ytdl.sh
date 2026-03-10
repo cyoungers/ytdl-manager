@@ -15,6 +15,15 @@ require curl; require jq
 api()  { curl -sf "$API$1" "${@:2}"; }
 apij() { api "$@" | jq; }
 
+# Convert a UTC ISO timestamp to local time (e.g. "2026-03-09T01:16:31+00:00" → "Mar 09 07:16 CST")
+to_local() {
+  local ts="$1"
+  [[ -z "$ts" || "$ts" == "null" || "$ts" == "never" ]] && echo "${ts:-never}" && return
+  date -d "$ts" "+%b %d %H:%M %Z" 2>/dev/null \
+    || date -j -f "%Y-%m-%dT%H:%M:%S" "${ts:0:19}" "+%b %d %H:%M %Z" 2>/dev/null \
+    || echo "$ts"
+}
+
 hr()   { echo -e "${CYAN}$(printf '─%.0s' {1..60})${RESET}"; }
 hdr()  { hr; echo -e "${BOLD}${CYAN}  $1${RESET}"; hr; }
 ok()   { echo -e "${GREEN}✓ $1${RESET}"; }
@@ -167,8 +176,10 @@ cmd_list() {
   | while IFS=$'\t' read -r id name quality interval status checked; do
     local color="$GREEN"
     [[ "$status" == "PAUSED" ]] && color="$YELLOW"
+    local checked_local
+    checked_local=$(to_local "$checked")
     printf "  ${CYAN}%s${RESET}  ${BOLD}%-20s${RESET}  %-6s  %-5s  ${color}%-7s${RESET}  %s\n" \
-      "$id" "$name" "$quality" "$interval" "$status" "$checked"
+      "$id" "$name" "$quality" "$interval" "$status" "$checked_local"
   done
   echo
   pause
@@ -222,14 +233,19 @@ cmd_jobs() {
       [[ "$status" == "running"   ]] && color="$CYAN"
       [[ "$status" == "completed" ]] && color="$GREEN"
       [[ "$status" == "failed"    ]] && color="$RED"
+      local started_local
+      started_local=$(to_local "$started")
       printf "  ${color}%-10s %-16s %-10s %-10s %5s %5s %5s  %s${RESET}\n" \
-        "$jid" "$name" "$trigger" "$status" "$found" "$done" "$fail" "${started:0:19}"
+        "$jid" "$name" "$trigger" "$status" "$found" "$done" "$fail" "$started_local"
     done <<< "$jobs"
   fi
 
   echo
   echo -e "${BOLD}  Upcoming Scheduled Runs:${RESET}"
-  echo "$data" | jq -r '.scheduled[] | "  \(.sub_name)  →  \(.next_run // "not scheduled")"'
+  echo "$data" | jq -r '.scheduled[] | "\(.sub_name)\t\(.next_run // "not scheduled")"' \
+  | while IFS=$'\t' read -r name next_run; do
+      echo "  $name  →  $(to_local "$next_run")"
+    done
   echo
   pause
 }
