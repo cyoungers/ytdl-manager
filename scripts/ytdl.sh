@@ -160,6 +160,7 @@ cmd_add() {
   ok "Subscription added!  ID: $id"
   echo -e "  Initial run started in background."
   pause
+  cmd_list
 }
 
 # ── LIST SUBSCRIPTIONS ─────────────────────────────────────────────────────
