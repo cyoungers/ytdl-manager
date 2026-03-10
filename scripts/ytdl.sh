@@ -343,7 +343,32 @@ cmd_cookies() {
   pause
 }
 
-# ── CONTAINER OPS ──────────────────────────────────────────────────────────
+# ── RECENT DOWNLOADS ───────────────────────────────────────────────────────
+cmd_downloads() {
+  hdr "Recent Downloads"
+  read -rp "  How many entries to show [default: 30]: " n
+  n=${n:-30}
+  local data
+  data=$(api "/downloads-log?lines=$n") || { err "API call failed"; return; }
+  local count
+  count=$(echo "$data" | jq '.entries | length')
+  if [[ "$count" -eq 0 ]]; then
+    warn "No downloads logged yet."
+    pause; return
+  fi
+  printf "\n  ${BOLD}%-22s %-16s %s${RESET}\n" "Downloaded" "Subscription" "Filename"
+  hr
+  echo "$data" | jq -r '.entries[] | [.timestamp, .subscription, .filename] | @tsv' \
+  | while IFS=$'\t' read -r ts sub filename; do
+      local ts_local
+      ts_local=$(to_local "$ts")
+      printf "  %-22s ${CYAN}%-16s${RESET} %s\n" "$ts_local" "$sub" "$filename"
+    done
+  echo
+  pause
+}
+
+
 cmd_container() {
   hdr "Container Operations"
   echo "  1) Show container status"
@@ -415,11 +440,12 @@ main_menu() {
     echo
     echo -e "  ${YELLOW}Monitoring${RESET}"
     echo    "    8)  Job status"
-    echo    "    9)  Health check"
+    echo    "    9)  Recent downloads"
+    echo    "    10) Health check"
     echo
     echo -e "  ${YELLOW}Maintenance${RESET}"
-    echo    "    10) Refresh YouTube cookies"
-    echo    "    11) Container operations"
+    echo    "    11) Refresh YouTube cookies"
+    echo    "    12) Container operations"
     echo
     echo    "    q)  Quit"
     echo
@@ -433,9 +459,10 @@ main_menu() {
       6)  cmd_update    ;;
       7)  cmd_delete    ;;
       8)  cmd_jobs      ;;
-      9)  cmd_health    ;;
-      10) cmd_cookies   ;;
-      11) cmd_container ;;
+      9)  cmd_downloads ;;
+      10) cmd_health    ;;
+      11) cmd_cookies   ;;
+      12) cmd_container ;;
       q|Q) echo; ok "Bye!"; echo; exit 0 ;;
       *) warn "Unknown option" ;;
     esac

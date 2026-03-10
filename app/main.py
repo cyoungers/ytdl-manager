@@ -223,6 +223,17 @@ FORMAT_MAP = {
 OUTPUT_TEMPLATE = "%(title)s_(%(upload_date>%Y_%m_%d)s)_[%(id)s].%(ext)s"
 
 
+DOWNLOADS_LOG = "/data/downloads.log"
+
+
+def _log_download(sub: dict, filename: str):
+    """Append a successful download entry to the downloads log."""
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    basename = os.path.basename(filename)
+    with open(DOWNLOADS_LOG, "a") as f:
+        f.write(f"{ts}\t{sub['name']}\t{basename}\n")
+
+
 def _download_video(sub: dict, video_id: str, log_path: str) -> int:
     """Download a single video by ID."""
     os.makedirs(sub["output_dir"], exist_ok=True)
@@ -256,8 +267,31 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
 
     cmd.append(video_url)
 
+    result = subprocess.run(cmd, capture_output=False,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    # Write output to log
     with open(log_path, "a") as log:
-        result = subprocess.run(cmd, stdout=log, stderr=log, text=True)
+        log.write(result.stdout)
+
+    # Detect successful download — yt-dlp prints the final merged filename
+    if result.returncode == 0:
+        for line in result.stdout.splitlines():
+            # "Merging formats into "/path/to/file.mp4""
+            if line.startswith("[Merger] Merging formats into"):
+                filename = line.split('"')[1] if '"' in line else ""
+                if filename:
+                    _log_download(sub, filename)
+                    break
+            # Already downloaded (archive hit): "[download] /path/to/file.mp4 has already been downloaded"
+            # Single-stream (no merge needed): "[download] Destination: /path/to/file.mp4"
+            elif "has already been downloaded" in line or \
+                 (line.startswith("[download] Destination:") and line.endswith(".mp4")):
+                parts = line.split()
+                filename = parts[-1] if parts else ""
+                if filename:
+                    _log_download(sub, filename)
+                    break
 
     return result.returncode
 
@@ -571,6 +605,21 @@ def get_log(sub_id: str, lines: int = 100):
     with open(log_path) as f:
         content = f.readlines()
     return {"log": "".join(content[-lines:])}
+
+
+@app.get("/downloads-log")
+def get_downloads_log(lines: int = 50):
+    if not os.path.exists(DOWNLOADS_LOG):
+        return {"entries": []}
+    with open(DOWNLOADS_LOG) as f:
+        raw = f.readlines()
+    entries = []
+    for line in raw[-lines:]:
+        parts = line.strip().split("\t")
+        if len(parts) == 3:
+            entries.append({"timestamp": parts[0], "subscription": parts[1], "filename": parts[2]})
+    entries.reverse()  # newest first
+    return {"entries": entries}
 
 
 @app.get("/jobs")
