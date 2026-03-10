@@ -77,11 +77,17 @@ cmd_add() {
   read -rp "  Name (display label): " name
   [[ -z "$name" ]] && name="$url"
 
-  # Output dir
+  # Output dir — auto-default to /downloads/<name>
+  local default_dir="/downloads/${name// /_}"
   echo
-  echo -e "  ${BOLD}Output directory${RESET} (container path, e.g. /downloads/belleranch)"
-  read -rp "  Output dir: " output_dir
-  [[ -z "$output_dir" ]] && { err "Output dir is required"; return; }
+  echo -e "  ${BOLD}Output directory${RESET} (must start with /downloads/)"
+  read -rp "  Output dir [${default_dir}]: " output_dir
+  output_dir="${output_dir:-$default_dir}"
+  # Auto-prefix /downloads/ if user omitted it
+  if [[ "$output_dir" != /downloads/* ]]; then
+    output_dir="/downloads/$output_dir"
+    echo -e "  ${YELLOW}→ Adjusted to: $output_dir${RESET}"
+  fi
 
   # Interval
   echo

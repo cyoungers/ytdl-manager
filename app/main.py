@@ -214,10 +214,10 @@ def _append_archive(sub_id: str, video_id: str):
 # ---------------------------------------------------------------------------
 
 FORMAT_MAP = {
-    "1080": "bestvideo[height<=1080][ext=mp4][protocol=https]+bestaudio[ext=m4a][protocol=https]/bestvideo[height<=1080][protocol=https]+bestaudio[protocol=https]/best[height<=1080][protocol=https]/best",
-    "720":  "bestvideo[height<=720][ext=mp4][protocol=https]+bestaudio[ext=m4a][protocol=https]/bestvideo[height<=720][protocol=https]+bestaudio[protocol=https]/best[height<=720][protocol=https]/best",
-    "480":  "bestvideo[height<=480][ext=mp4][protocol=https]+bestaudio[ext=m4a][protocol=https]/best[height<=480][protocol=https]/best",
-    "best": "bestvideo[ext=mp4][protocol=https]+bestaudio[ext=m4a][protocol=https]/bestvideo[protocol=https]+bestaudio[protocol=https]/best[protocol=https]/best",
+    "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+    "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+    "480":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best",
+    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
 }
 
 OUTPUT_TEMPLATE = "%(title)s_(%(upload_date>%Y_%m_%d)s)_[%(id)s].%(ext)s"
@@ -243,6 +243,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "--sleep-requests",      "2",
         "--sleep-interval",      "3",
         "--max-sleep-interval",  "8",
+        "--extractor-args",      "youtube:player_client=web",
         "--js-runtimes",         "node",
         "--remote-components",   "ejs:github",
         "--newline",
