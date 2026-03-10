@@ -344,6 +344,7 @@ cmd_cookies() {
   pause
 }
 
+# Strip date and YouTube ID from filename for display
 # Truncate a filename keeping the start and extension
 truncate_filename() {
   local name="$1"
@@ -352,12 +353,18 @@ truncate_filename() {
     echo "$name"
     return
   fi
-  # Split on last dot to get extension (e.g. "mp4")
   local ext="${name##*.}"
   local base="${name%.*}"
-  # We want: first (max - len(ext) - 5) chars of base + "..." + "." + ext
   local keep=$(( max - ${#ext} - 4 ))
-  echo "${base:0:$keep}....${ext}"
+  echo "${base:0:$keep}...${ext}"
+}
+
+# Strip _(date)_[id] from filename for cleaner display
+# e.g. "FIRST SPIN MAGIC_(2026_03_03)_[GKNvJvhzHZ0].mp4" → "FIRST SPIN MAGIC.mp4"
+clean_filename() {
+  local name="$1"
+  # Use sed extended regex to strip _(YYYY_MM_DD)_[videoID] before the final .ext
+  echo "$name" | sed -E 's/_\([0-9]{4}_[0-9]{2}_[0-9]{2}\)_\[[A-Za-z0-9_-]+\](\.[^.]+)$/\1/'
 }
 cmd_downloads() {
   hdr "Recent Downloads"
@@ -377,7 +384,7 @@ cmd_downloads() {
   | while IFS=$'\t' read -r ts sub filename; do
       local ts_local short_name
       ts_local=$(to_local "$ts")
-      short_name=$(truncate_filename "$filename" 70)
+      short_name=$(truncate_filename "$(clean_filename "$filename")" 70)
       printf "  %-22s ${CYAN}%-16s${RESET} %s\n" "$ts_local" "$sub" "$short_name"
     done
   echo

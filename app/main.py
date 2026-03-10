@@ -283,12 +283,16 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
                 if filename:
                     _log_download(sub, filename)
                     break
-            # Already downloaded (archive hit): "[download] /path/to/file.mp4 has already been downloaded"
             # Single-stream (no merge needed): "[download] Destination: /path/to/file.mp4"
-            elif "has already been downloaded" in line or \
-                 (line.startswith("[download] Destination:") and line.endswith(".mp4")):
-                parts = line.split()
-                filename = parts[-1] if parts else ""
+            elif line.startswith("[download] Destination:") and line.endswith(".mp4"):
+                filename = line[len("[download] Destination:"):].strip()
+                if filename:
+                    _log_download(sub, filename)
+                    break
+            # Already downloaded: "[download] /path/to/file.mp4 has already been downloaded"
+            elif "has already been downloaded" in line:
+                filename = line[len("[download]"):].strip()
+                filename = filename.replace(" has already been downloaded", "")
                 if filename:
                     _log_download(sub, filename)
                     break
