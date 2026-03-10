@@ -347,15 +347,17 @@ cmd_cookies() {
 # Truncate a filename keeping the start and extension
 truncate_filename() {
   local name="$1"
-  local max="${2:-60}"
-  local ext="${name##*.}"
-  local base="${name%.*}"
+  local max="${2:-70}"
   if [[ "${#name}" -le "$max" ]]; then
     echo "$name"
-  else
-    local trim=$(( max - ${#ext} - 4 ))  # 4 = "..." + "."
-    echo "${base:0:$trim}....$ext"
+    return
   fi
+  # Split on last dot to get extension (e.g. "mp4")
+  local ext="${name##*.}"
+  local base="${name%.*}"
+  # We want: first (max - len(ext) - 5) chars of base + "..." + "." + ext
+  local keep=$(( max - ${#ext} - 4 ))
+  echo "${base:0:$keep}....${ext}"
 }
 cmd_downloads() {
   hdr "Recent Downloads"
@@ -375,7 +377,7 @@ cmd_downloads() {
   | while IFS=$'\t' read -r ts sub filename; do
       local ts_local short_name
       ts_local=$(to_local "$ts")
-      short_name=$(truncate_filename "$filename" 60)
+      short_name=$(truncate_filename "$filename" 70)
       printf "  %-22s ${CYAN}%-16s${RESET} %s\n" "$ts_local" "$sub" "$short_name"
     done
   echo
