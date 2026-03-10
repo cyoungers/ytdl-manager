@@ -292,7 +292,16 @@ cmd_update() {
   echo
   read -rp "  interval_hours: " interval
   read -rp "  quality (1080/720/480/best): " quality
-  read -rp "  date_after (e.g. today-30days): " date_after
+  echo
+  echo -e "  ${BOLD}date_after${RESET} — only download videos uploaded on or after this date (playlists only)."
+  echo    "  Format: YYYYMMDD  or  a relative value like today-Ndays / today-Nmonths / today-Nyear"
+  echo    "  Examples:  20250101       (Jan 1, 2025)"
+  echo    "             today-7days    (last 7 days)"
+  echo    "             today-30days   (last 30 days)"
+  echo    "             today-6months  (last 6 months)"
+  echo    "             today-1year    (last year)"
+  echo    "  Leave blank to keep current value. Enter 'clear' to remove the filter."
+  read -rp "  date_after: " date_after
   echo
 
   local payload="{}"
