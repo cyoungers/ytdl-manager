@@ -24,6 +24,8 @@ _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 _running_subs: set[str] = set()
 _running_subs_lock = threading.Lock()
+_cancelled_subs: set[str] = set()
+_cancelled_subs_lock = threading.Lock()
 
 RSS_NS = {
     "atom":   "http://www.w3.org/2005/Atom",
@@ -416,6 +418,12 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
             import time
             overall_rc = 0
             for i, video_id in enumerate(new_ids):
+                with _cancelled_subs_lock:
+                    if sub_id in _cancelled_subs:
+                        with open(log_path, "a") as log:
+                            log.write("Job cancelled (subscription deleted)\n")
+                        _job_finish(job_id, -2)
+                        return
                 if i > 0:
                     time.sleep(5)  # avoid rate limiting between downloads
                 with open(log_path, "a") as log:
@@ -450,6 +458,8 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
     finally:
         with _running_subs_lock:
             _running_subs.discard(sub_id)
+        with _cancelled_subs_lock:
+            _cancelled_subs.discard(sub_id)
 
 
 # ---------------------------------------------------------------------------
@@ -520,8 +530,14 @@ def health():
 
 @app.post("/subscriptions", status_code=201)
 def add_subscription(body: SubCreate):
-    sub_id = str(uuid.uuid4())[:8]
     conn = sqlite3.connect(DB_PATH)
+    existing = conn.execute(
+        "SELECT id, name FROM subscriptions WHERE url = ?", (body.url,)
+    ).fetchone()
+    if existing:
+        conn.close()
+        raise HTTPException(status_code=409, detail=f"Already subscribed (id={existing[0]}, name={existing[1]})")
+    sub_id = str(uuid.uuid4())[:8]
     conn.execute(
         """INSERT INTO subscriptions
            (id, url, name, output_dir, interval_hours, quality, backfill, date_after, created_at)
@@ -584,6 +600,9 @@ def delete_subscription(sub_id: str):
     if not get_sub(sub_id):
         raise HTTPException(404, "Subscription not found")
     unschedule_sub(sub_id)
+    # Signal any running job to stop
+    with _cancelled_subs_lock:
+        _cancelled_subs.add(sub_id)
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM subscriptions WHERE id=?", (sub_id,))
     conn.commit()

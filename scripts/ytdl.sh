@@ -150,10 +150,22 @@ cmd_add() {
     '{url:$url, name:$name, output_dir:$output_dir,
       interval_hours:$interval, quality:$quality, date_after:$date_after}')
 
-  local resp
-  resp=$(curl -sf -X POST "$API/subscriptions" \
+  local resp http_code
+  resp=$(curl -s -w "\n%{http_code}" -X POST "$API/subscriptions" \
     -H "Content-Type: application/json" \
-    -d "$payload") || { err "API call failed"; return; }
+    -d "$payload")
+  http_code=$(echo "$resp" | tail -1)
+  resp=$(echo "$resp" | head -n -1)
+
+  if [[ "$http_code" == "409" ]]; then
+    local detail
+    detail=$(echo "$resp" | jq -r '.detail')
+    warn "Already subscribed: $detail"
+    pause; return
+  elif [[ "$http_code" != "201" ]]; then
+    err "API call failed (HTTP $http_code)"
+    pause; return
+  fi
 
   local id
   id=$(echo "$resp" | jq -r '.id')
