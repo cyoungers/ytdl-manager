@@ -344,7 +344,19 @@ cmd_cookies() {
   pause
 }
 
-# ── RECENT DOWNLOADS ───────────────────────────────────────────────────────
+# Truncate a filename keeping the start and extension
+truncate_filename() {
+  local name="$1"
+  local max="${2:-60}"
+  local ext="${name##*.}"
+  local base="${name%.*}"
+  if [[ "${#name}" -le "$max" ]]; then
+    echo "$name"
+  else
+    local trim=$(( max - ${#ext} - 4 ))  # 4 = "..." + "."
+    echo "${base:0:$trim}....$ext"
+  fi
+}
 cmd_downloads() {
   hdr "Recent Downloads"
   read -rp "  How many entries to show [default: 30]: " n
@@ -361,9 +373,10 @@ cmd_downloads() {
   hr
   echo "$data" | jq -r '.entries[] | [.timestamp, .subscription, .filename] | @tsv' \
   | while IFS=$'\t' read -r ts sub filename; do
-      local ts_local
+      local ts_local short_name
       ts_local=$(to_local "$ts")
-      printf "  %-22s ${CYAN}%-16s${RESET} %s\n" "$ts_local" "$sub" "$filename"
+      short_name=$(truncate_filename "$filename" 60)
+      printf "  %-22s ${CYAN}%-16s${RESET} %s\n" "$ts_local" "$sub" "$short_name"
     done
   echo
   pause
