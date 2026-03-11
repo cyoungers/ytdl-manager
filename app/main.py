@@ -257,14 +257,14 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "--sleep-requests",      "2",
         "--sleep-interval",      "3",
         "--max-sleep-interval",  "8",
-        "--extractor-args",      "youtube:player_client=android_vr,web",
+        "--extractor-args",      "youtube:player_client=android_vr",
         "--js-runtimes",         "node",
         "--remote-components",   "ejs:github",
         "--newline",
     ]
 
     cookies_path = "/data/cookies.txt"
-    if os.path.exists(cookies_path):
+    if os.path.exists(cookies_path) and "android_vr" not in cmd:
         cmd += ["--cookies", cookies_path]
 
     cmd.append(video_url)
