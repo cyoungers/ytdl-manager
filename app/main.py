@@ -249,7 +249,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "--download-archive",    archive_path,
         "--output",              output_tmpl,
         "--format",              fmt,
-        "--match-filter",        "duration>60 & !is_live & !was_live",
+        "--match-filter",        "duration>180 & !is_live & !was_live & original_url!*=/shorts/",
         "--merge-output-format", "mp4",
         "--retries",             "10",
         "--fragment-retries",    "10",
