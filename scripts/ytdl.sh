@@ -203,13 +203,31 @@ cmd_logs() {
   hdr "View Logs"
   pick_sub || { pause; return; }
   echo
-  read -rp "  Lines to show [default: 80]: " lines
-  lines=${lines:-80}
+  echo -e "  Enter number of lines to show, or ${BOLD}s${RESET} to scroll/follow live:"
+  read -rp "  [default: 80]: " lines
   echo
-  hr
-  api "/subscriptions/$SUB_ID/log?lines=$lines" | jq -r '.log'
-  hr
-  pause
+
+  if [[ "$lines" == "s" || "$lines" == "S" ]]; then
+    # Get the log file path from inside the container and tail -f it via docker exec
+    local container
+    container=$(docker ps --filter name=ytdl --format "{{.Names}}" 2>/dev/null | head -1)
+    if [[ -z "$container" ]]; then
+      err "No ytdl container found."
+      pause; return
+    fi
+    hr
+    echo -e "  ${CYAN}Scrolling log for ${BOLD}$SUB_NAME${RESET}${CYAN} — press Ctrl+C to stop${RESET}"
+    hr
+    docker exec "$container" tail -f "/data/logs/$SUB_ID.log"
+    hr
+    pause
+  else
+    lines=${lines:-80}
+    hr
+    api "/subscriptions/$SUB_ID/log?lines=$lines" | jq -r '.log'
+    hr
+    pause
+  fi
 }
 
 # ── TRIGGER MANUAL CHECK ───────────────────────────────────────────────────
