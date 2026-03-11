@@ -466,14 +466,24 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
 # Scheduler
 # ---------------------------------------------------------------------------
 
-def schedule_sub(sub_id: str, interval_hours: float):
+def schedule_sub(sub_id: str, interval_hours: float, jitter: bool = False):
+    import random
+    from datetime import timedelta
     job_id = f"sub_{sub_id}"
     if scheduler.get_job(job_id):
         scheduler.remove_job(job_id)
-    scheduler.add_job(
-        run_subscription, "interval", hours=interval_hours,
-        id=job_id, args=[sub_id, "scheduler"], replace_existing=True,
+    # Spread out subscriptions by delaying the first run by a random offset
+    # up to the full interval, so they don't all fire at the same time
+    kwargs = dict(
+        hours=interval_hours,
+        id=job_id,
+        args=[sub_id, "scheduler"],
+        replace_existing=True,
     )
+    if jitter:
+        jitter_seconds = random.randint(0, int(interval_hours * 3600))
+        kwargs["start_date"] = datetime.now(timezone.utc) + timedelta(seconds=jitter_seconds)
+    scheduler.add_job(run_subscription, "interval", **kwargs)
 
 
 def unschedule_sub(sub_id: str):
@@ -488,7 +498,7 @@ def startup():
     scheduler.start()
     for sub in all_subs():
         if sub["enabled"]:
-            schedule_sub(sub["id"], sub["interval_hours"])
+            schedule_sub(sub["id"], sub["interval_hours"], jitter=True)
 
 
 @app.on_event("shutdown")
