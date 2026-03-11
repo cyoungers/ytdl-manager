@@ -334,11 +334,9 @@ cmd_delete() {
 # ── REFRESH COOKIES ────────────────────────────────────────────────────────
 cmd_cookies() {
   hdr "Refresh YouTube Cookies"
-  local src="$HOME/Downloads/cookies.txt"
-  # Also accept cookies (1).txt etc. if the plain one doesn't exist
-  if [[ ! -f "$src" ]]; then
-    src=$(ls "$HOME/Downloads/cookies"*.txt 2>/dev/null | head -1)
-  fi
+  # Pick the most recently modified cookies*.txt file in Downloads
+  local src
+  src=$(ls -t "$HOME/Downloads/cookies"*.txt 2>/dev/null | head -1)
   if [[ -z "$src" || ! -f "$src" ]]; then
     err "File not found: $src"
     echo
@@ -367,9 +365,8 @@ cmd_cookies() {
 
   if docker cp "$src" "$container:/data/cookies.txt"; then
     ok "Cookies updated!"
-    rm -f "$src" && echo -e "  Deleted local file: $src"
-    # Also remove any numbered duplicates e.g. cookies (1).txt, cookies (2).txt
-    rm -f "$HOME/Downloads/cookies (*.txt"
+    # Remove all cookies*.txt files from Downloads
+    rm -f "$HOME/Downloads/cookies"*.txt && echo -e "  Cleaned up local cookies files from ~/Downloads"
   else
     err "Copy failed"
   fi
