@@ -105,12 +105,13 @@ cmd_add() {
 
   # Quality
   echo
-  echo -e "  ${BOLD}Quality:${RESET}  1) 1080  2) 720  3) 480  4) best"
+  echo -e "  ${BOLD}Quality:${RESET}  1) 1080  2) 720  3) 480  4) best  5) 1440"
   read -rp "  Choice [default: 1]: " qchoice
   case "$qchoice" in
     2) quality="720"  ;;
     3) quality="480"  ;;
     4) quality="best" ;;
+    5) quality="1440" ;;
     *) quality="1080" ;;
   esac
 
@@ -327,7 +328,7 @@ cmd_update() {
   echo -e "  Updating ${BOLD}$SUB_NAME${RESET} (leave blank to keep current value)"
   echo
   read -rp "  interval_hours: " interval
-  read -rp "  quality (1080/720/480/best): " quality
+  read -rp "  quality (best/1440/1080/720/480): " quality
   echo
   echo -e "  ${BOLD}date_after${RESET} — only download videos uploaded on or after this date (playlists only)."
   echo    "  Format: YYYYMMDD  or  a relative value like today-Ndays / today-Nmonths / today-Nyear"
