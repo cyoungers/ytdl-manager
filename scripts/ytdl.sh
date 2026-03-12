@@ -198,6 +198,24 @@ cmd_list() {
   pause
 }
 
+# Convert UTC timestamps in log output to local Pacific time
+utc_to_pacific() {
+  python3 -c "
+import sys, re
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+tz = ZoneInfo('America/Los_Angeles')
+for line in sys.stdin:
+    def convert(m):
+        dt = datetime.strptime(m.group(0), '%Y-%m-%d %H:%M:%S UTC')
+        dt = dt.replace(tzinfo=timezone.utc).astimezone(tz)
+        return dt.strftime('%Y-%m-%d %H:%M:%S %Z')
+    line = re.sub(r'\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} UTC', convert, line)
+    sys.stdout.write(line)
+    sys.stdout.flush()
+"
+}
+
 # ── VIEW LOGS ──────────────────────────────────────────────────────────────
 cmd_logs() {
   hdr "View Logs"
@@ -218,13 +236,13 @@ cmd_logs() {
     hr
     echo -e "  ${CYAN}Scrolling log for ${BOLD}$SUB_NAME${RESET}${CYAN} — press Ctrl+C to stop${RESET}"
     hr
-    docker exec "$container" tail -f "/data/logs/$SUB_ID.log"
+    docker exec "$container" tail -f "/data/logs/$SUB_ID.log" | utc_to_pacific
     hr
     pause
   else
     lines=${lines:-80}
     hr
-    api "/subscriptions/$SUB_ID/log?lines=$lines" | jq -r '.log'
+    api "/subscriptions/$SUB_ID/log?lines=$lines" | jq -r '.log' | utc_to_pacific
     hr
     pause
   fi
