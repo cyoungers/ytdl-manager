@@ -65,25 +65,35 @@ ytdl-manager/
 
 ### 1. Edit docker-compose.yml
 
-Change the downloads bind mount to your actual path on the host:
+The current configuration:
 
 ```yaml
+services:
+  ytdl-manager:
+    build: .
+    container_name: ytdl-manager
+    restart: unless-stopped
+    ports:
+      - "8911:8080"
+    volumes:
+      - ytdl-data:/data
+      - /mnt/nas/video/ytdl-manager:/downloads
+    environment:
+      - TZ=America/Los_Angeles
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
-  - ytdl-data:/data
-  - /your/actual/path:/downloads   # ← change this
+  ytdl-data:
 ```
 
-Change the timezone:
-```yaml
-environment:
-  - TZ=America/Chicago   # ← change to your timezone
-```
-
-The default port is **8911**. Change the left side if needed:
-```yaml
-ports:
-  - "8911:8080"
-```
+**To customize:**
+- Change `/mnt/nas/video/ytdl-manager` to wherever you want videos stored on the host
+- Change `TZ=America/Los_Angeles` to your timezone
+- Change the left side of `8911:8080` if you need a different port
 
 ### 2. Deploy via Portainer
 
