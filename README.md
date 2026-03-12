@@ -6,11 +6,12 @@ automatically downloading new videos via yt-dlp.
 ## Stack
 
 - **FastAPI** — REST API for managing subscriptions and monitoring jobs
-- **APScheduler** — per-subscription scheduling with individual intervals
+- **APScheduler** — per-subscription scheduling with individual intervals and jitter
 - **SQLite** — persistent subscription storage
 - **yt-dlp** — the actual downloader (built into the container)
 - **ffmpeg** — merges separate video/audio streams into mp4
 - **Node.js** — JavaScript runtime required by yt-dlp for YouTube extraction
+- **bgutil-ytdlp-pot-provider** — generates PO tokens to avoid YouTube bot detection
 
 ---
 
@@ -21,9 +22,9 @@ Channel subscriptions use YouTube's public RSS feed to discover new videos:
 ```
 https://www.youtube.com/feeds/videos.xml?channel_id=UC...
 ```
-This returns the 15 most recent videos instantly, with no authentication required.
-Only the actual video downloads need cookies. This eliminates the full-channel-scan
-problem that caused cookie rotation and bot detection.
+This returns the 15 most recent videos instantly with no authentication required.
+Only the actual video downloads use yt-dlp. This eliminates the full-channel-scan
+problem that caused cookie rotation and bot detection issues.
 
 ### Playlists
 Playlist subscriptions use `yt-dlp --flat-playlist` to fetch video IDs only (no
@@ -34,6 +35,13 @@ Both modes download each new video individually via a separate yt-dlp call, with
 5-second pause between videos to avoid rate limiting. Videos already in the
 download archive are skipped automatically.
 
+### Bot Detection Avoidance
+- Uses the `android_vr` YouTube player client, which bypasses most bot detection
+- bgutil PO token provider generates GVS PO tokens when needed
+- Scheduling jitter spreads subscription checks randomly across each interval
+  window so they don't all fire at once
+- Shorts and live streams are filtered out (`duration>180`, `/shorts/` URL exclusion)
+
 ---
 
 ## Project Structure
@@ -43,10 +51,12 @@ ytdl-manager/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── README.md
-├── refresh-cookies.sh      # Run on the Ubuntu host to refresh YouTube cookies
-└── app/
-    ├── main.py
-    └── requirements.txt
+├── start.sh                # Container entrypoint — checks bgutil then starts uvicorn
+├── app/
+│   ├── main.py
+│   └── requirements.txt
+└── scripts/
+    └── ytdl.sh             # Interactive management menu (run on Ubuntu host)
 ```
 
 ---
@@ -90,37 +100,52 @@ curl http://192.168.0.166:8911/health
 
 ---
 
-## YouTube Cookies (Required for Downloads)
+## Management Script
 
-RSS-based channel discovery needs no authentication. However, the actual video
-downloads require valid YouTube session cookies to avoid bot detection.
+The easiest way to manage subscriptions is the interactive menu script:
 
-### Initial setup
+```bash
+~/ai/ytdl-manager/scripts/ytdl.sh
+```
 
-1. Open **Chrome** and log into YouTube
-2. Install the **"Get cookies.txt LOCALLY"** extension:
-   https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc
+### Menu Options
+
+| # | Option | Description |
+|---|--------|-------------|
+| 1 | Add subscription | Add a channel or playlist, auto-triggers initial run |
+| 2 | List subscriptions | Shows all subs with quality, interval, last checked |
+| 3 | Trigger manual check | Immediately check a subscription for new videos |
+| 4 | View logs | Show last N lines of a sub's log, or `s` to follow live |
+| 5 | Pause/Resume | Toggle a subscription on or off |
+| 6 | Update settings | Change interval, quality, or date_after |
+| 7 | Delete subscription | Removes sub and cancels any running job |
+| 8 | Job status | Shows recent jobs with found/done/failed counts |
+| 9 | Recent downloads | Lists recently downloaded files |
+| 10 | Health check | Pings the API |
+| 11 | Refresh cookies | Copies latest cookies.txt from ~/Downloads into container |
+| 12 | Container operations | Status, logs, restart, update yt-dlp |
+
+---
+
+## YouTube Cookies
+
+The `android_vr` player client used for downloads generally does not require
+cookies. However, keeping a cookies file available provides a fallback for any
+web client requests.
+
+### Refreshing cookies (if needed)
+
+1. Open **Chrome** on the Ubuntu machine and log into YouTube
+2. Install the **"Get cookies.txt LOCALLY"** Chrome extension
 3. Go to **youtube.com**, click the extension icon → **Export**
    (saves `cookies.txt` to `~/Downloads`)
-4. Find your container name and copy the cookies in:
-   ```bash
-   CONTAINER=$(docker ps --filter name=ytdl --format "{{.Names}}" | head -1)
-   docker cp ~/Downloads/cookies.txt $CONTAINER:/data/cookies.txt
-   ```
-   Or use the included helper script: `~/refresh-cookies.sh`
-   (update the container name inside the script if needed)
+4. Run the management script and select option **11**
+   - The script automatically picks the newest `cookies*.txt` file
+   - Copies it into the container
+   - Deletes all local cookie files from Downloads afterward
 
-### Refreshing cookies
-
-When downloads start failing with "sign in to confirm you're not a bot" in the
-logs, refresh them:
-
-1. Go to youtube.com in Chrome (make sure you're logged in)
-2. Click the extension → Export
-3. Run the copy command above or `~/refresh-cookies.sh`
-
-**Important:** Do not log out of YouTube in Chrome after exporting —
-logging out invalidates the cookies immediately.
+**Note:** Do not log out of YouTube in Chrome after exporting —
+logging out immediately invalidates the cookies.
 
 ---
 
@@ -131,6 +156,38 @@ Downloaded videos are saved as:
 Video Title_(2025_03_07)_[dQw4w9WgXcQ].mp4
 ```
 Template: `%(title)s_(%(upload_date>%Y_%m_%d)s)_[%(id)s].%(ext)s`
+
+---
+
+## Quality Options
+
+| Setting | Description |
+|---------|-------------|
+| `best` | No height cap — downloads highest available (4K if offered) |
+| `1080` | Caps at 1080p (default) |
+| `720` | Caps at 720p — smaller files |
+| `480` | Caps at 480p — smallest files |
+
+`best` is recommended for channels that post in 4K. File sizes can be 3–5x
+larger than 1080p for 4K content.
+
+---
+
+## Scheduling
+
+Each subscription fires on its own interval (e.g. every 6 hours). On container
+startup, a random jitter is applied so subscriptions spread out across the
+interval window instead of all firing at the same time. This reduces the chance
+of YouTube seeing a burst of requests from the same IP.
+
+---
+
+## Shorts & Live Stream Filtering
+
+Videos are automatically skipped if:
+- Duration is 3 minutes or less (`duration>180`)
+- URL contains `/shorts/`
+- Video is live or was live (`!is_live & !was_live`)
 
 ---
 
@@ -159,7 +216,7 @@ curl -X POST http://192.168.0.166:8911/subscriptions \
     "name":           "belleranch",
     "output_dir":     "/downloads/belleranch",
     "interval_hours": 6,
-    "quality":        "1080"
+    "quality":        "best"
   }'
 
 # Monitor a playlist (date_after recommended to avoid large initial scan)
@@ -170,7 +227,7 @@ curl -X POST http://192.168.0.166:8911/subscriptions \
     "name":           "my-playlist",
     "output_dir":     "/downloads/my-playlist",
     "interval_hours": 6,
-    "quality":        "1080",
+    "quality":        "best",
     "date_after":     "today-7days"
   }'
 ```
@@ -183,16 +240,13 @@ curl -X POST http://192.168.0.166:8911/subscriptions \
 | `name` | url | Friendly display name |
 | `output_dir` | required | Path inside the container (e.g. `/downloads/channelname`) |
 | `interval_hours` | `6` | How often to check for new videos |
-| `quality` | `1080` | `1080`, `720`, `480`, or `best` |
+| `quality` | `1080` | `best`, `1080`, `720`, or `480` |
 | `backfill` | `false` | `true` = download full history on first run (playlists only) |
-| `date_after` | none | Only download videos on/after this date (playlists only — channels use RSS) |
+| `date_after` | none | Only download videos on/after this date (playlists only) |
 
-**`date_after` formats:** `today-7days` · `today-30days` · `20250101`
+**`date_after` formats:** `today-7days` · `today-30days` · `today-6months` · `today-1year` · `20250101`
 
-**Channel subscriptions** do not need `date_after` — RSS only returns the 15
-most recent videos, so there is no risk of scanning thousands of old videos.
-
-**Playlist subscriptions** should use `date_after` to limit the initial scan.
+**Note:** Adding a duplicate URL returns HTTP 409 with the existing subscription's ID and name.
 
 ---
 
@@ -208,7 +262,7 @@ curl http://192.168.0.166:8911/subscriptions | jq
 curl http://192.168.0.166:8911/subscriptions/<id> | jq
 ```
 
-### One-liner to find a subscription ID by name
+### Find a subscription ID by name
 
 ```bash
 curl -s http://192.168.0.166:8911/subscriptions | jq -r '.[] | select(.name=="belleranch") | .id'
@@ -235,10 +289,6 @@ curl -s "http://192.168.0.166:8911/subscriptions/<id>/log" | jq -r .log
 
 # Last 50 lines
 curl -s "http://192.168.0.166:8911/subscriptions/<id>/log?lines=50" | jq -r .log
-
-# Shortcut using name
-ID=$(curl -s http://192.168.0.166:8911/subscriptions | jq -r '.[] | select(.name=="belleranch") | .id') \
-  && curl -s "http://192.168.0.166:8911/subscriptions/$ID/log?lines=50" | jq -r .log
 ```
 
 ---
@@ -264,7 +314,7 @@ curl -X PATCH http://192.168.0.166:8911/subscriptions/<id> \
 # Change quality
 curl -X PATCH http://192.168.0.166:8911/subscriptions/<id> \
   -H "Content-Type: application/json" \
-  -d '{"quality": "720"}'
+  -d '{"quality": "best"}'
 ```
 
 ---
@@ -275,12 +325,14 @@ curl -X PATCH http://192.168.0.166:8911/subscriptions/<id> \
 curl -X DELETE http://192.168.0.166:8911/subscriptions/<id>
 ```
 
+Deleting a subscription also cancels any currently running job for that subscription.
+
 ---
 
 ### Job status
 
 ```bash
-# All jobs + next scheduled run per subscription
+# All recent jobs
 curl http://192.168.0.166:8911/jobs | jq
 
 # Only running jobs
@@ -288,13 +340,21 @@ curl "http://192.168.0.166:8911/jobs?status=running" | jq
 
 # Only failed jobs
 curl "http://192.168.0.166:8911/jobs?status=failed" | jq
-
-# Specific job
-curl http://192.168.0.166:8911/jobs/<job_id> | jq
 ```
 
 Job records include `videos_found`, `videos_done`, and `videos_failed` counts.
 Job history is in-memory only and resets on container restart.
+
+---
+
+### Recent downloads log
+
+```bash
+curl "http://192.168.0.166:8911/downloads-log?lines=50" | jq
+```
+
+Returns a list of successfully downloaded files with timestamp, subscription name,
+and filename.
 
 ---
 
@@ -307,29 +367,28 @@ http://192.168.0.166:8911/docs
 
 ---
 
-## Updating yt-dlp
+## Rebuilding the Container
 
-YouTube changes its internals frequently. Rebuild the container periodically
-to pick up the latest yt-dlp release:
+Required when `main.py`, `Dockerfile`, or `requirements.txt` change.
+Script-only changes (`ytdl.sh`) just need a `git pull` on the Ubuntu host.
 
 ```bash
-# On the Ubuntu machine
 cd ~/ai/ytdl-manager
-docker compose build --no-cache && docker compose up -d
+docker compose down && docker compose build --no-cache && docker compose up -d
 ```
-
-Or in Portainer: redeploy the stack with **Re-pull image** checked.
 
 ---
 
 ## Development Workflow
 
-Files are edited on the Mac via the SMB mount at `/Volumes/Shared-1/ai/ytdl-manager/`.
-Changes are pushed to GitHub from the Ubuntu machine:
+Files are edited via SSH on the Ubuntu machine or via the SMB share.
+After editing, commit and push from the Ubuntu machine:
 
 ```bash
 cd ~/ai/ytdl-manager
 git add . && git commit -m "describe change" && git push
 ```
 
-Then in Portainer → stack → **Pull and redeploy**.
+Then either:
+- **Script changes only:** `git pull` on Ubuntu — no rebuild needed
+- **App/Docker changes:** Full rebuild (see above) or Portainer → **Pull and redeploy**
