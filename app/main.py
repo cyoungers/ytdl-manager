@@ -279,8 +279,13 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         if not result.stdout.endswith("\n"):
             log.write("\n")
 
-    # Treat filter-skipped videos as success (not a real failure)
-    if result.returncode != 0 and "does not pass filter" in result.stdout:
+    # Treat these non-fatal outcomes as success (not real failures)
+    non_fatal_patterns = [
+        "does not pass filter",           # --match-filter skipped (Shorts, live, <3min)
+        "This live event will begin",     # Scheduled stream not yet started
+        "Premieres in",                   # YouTube premiere not yet started
+    ]
+    if result.returncode != 0 and any(p in result.stdout for p in non_fatal_patterns):
         return 0
 
     # Detect successful download — yt-dlp prints the final merged filename
