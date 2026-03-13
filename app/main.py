@@ -276,6 +276,12 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
     # Write output to log
     with open(log_path, "a") as log:
         log.write(result.stdout)
+        if not result.stdout.endswith("\n"):
+            log.write("\n")
+
+    # Treat filter-skipped videos as success (not a real failure)
+    if result.returncode != 0 and "does not pass filter" in result.stdout:
+        return 0
 
     # Detect successful download — yt-dlp prints the final merged filename
     if result.returncode == 0:
