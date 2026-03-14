@@ -21,6 +21,10 @@ app = FastAPI(title="yt-dlp Manager")
 scheduler = BackgroundScheduler()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 
+_YTDLP_VERSION = subprocess.run(
+    ["yt-dlp", "--version"], capture_output=True, text=True
+).stdout.strip()
+
 DB_PATH = "/data/subscriptions.db"
 ARCHIVES_DIR = "/data/archives"
 LOGS_DIR = "/data/logs"
@@ -810,6 +814,7 @@ def api_status():
         "last_checked_name": last_checked_name,
         "last_checked_at": last_checked_at,
         "errors_today": errors_today,
+        "ytdlp_version": _YTDLP_VERSION,
     }
 
 
@@ -890,3 +895,16 @@ def api_check_all():
             threading.Thread(target=run_subscription, args=(s["id"], "manual"), daemon=True).start()
             triggered.append(s["id"])
     return {"status": "triggered", "count": len(triggered)}
+
+
+@app.post("/api/ytdlp-update")
+def api_ytdlp_update():
+    global _YTDLP_VERSION
+    result = subprocess.run(
+        ["pip", "install", "--upgrade", "yt-dlp", "--quiet"],
+        capture_output=True, text=True
+    )
+    _YTDLP_VERSION = subprocess.run(
+        ["yt-dlp", "--version"], capture_output=True, text=True
+    ).stdout.strip()
+    return {"version": _YTDLP_VERSION, "output": (result.stdout + result.stderr).strip()}
