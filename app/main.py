@@ -7,14 +7,19 @@ import uuid
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+_TZ = ZoneInfo("America/Los_Angeles")
 from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 app = FastAPI(title="yt-dlp Manager")
 scheduler = BackgroundScheduler()
+templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 
 DB_PATH = "/data/subscriptions.db"
 ARCHIVES_DIR = "/data/archives"
@@ -79,7 +84,7 @@ def get_sub(sub_id: str) -> Optional[dict]:
 def all_subs() -> list[dict]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM subscriptions ORDER BY created_at DESC").fetchall()
+    rows = conn.execute("SELECT * FROM subscriptions ORDER BY name ASC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -231,7 +236,7 @@ DOWNLOADS_LOG = "/data/downloads.log"
 
 def _log_download(sub: dict, filename: str):
     """Append a successful download entry to the downloads log."""
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    ts = datetime.now(_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     basename = os.path.basename(filename)
     with open(DOWNLOADS_LOG, "a") as f:
         f.write(f"{ts}\t{sub['name']}\t{basename}\n")
@@ -265,7 +270,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
     ]
 
     cookies_path = "/data/cookies.txt"
-    if os.path.exists(cookies_path) and "android_vr" not in cmd:
+    if os.path.exists(cookies_path):
         cmd += ["--cookies", cookies_path]
 
     cmd.append(video_url)
@@ -284,6 +289,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "does not pass filter",           # --match-filter skipped (Shorts, live, <3min)
         "This live event will begin",     # Scheduled stream not yet started
         "Premieres in",                   # YouTube premiere not yet started
+        "Sign in to confirm your age",    # Age-gated content, skip gracefully
     ]
     if result.returncode != 0 and any(p in result.stdout for p in non_fatal_patterns):
         return 0
@@ -341,6 +347,34 @@ def _get_playlist_new_ids(sub: dict, log_path: str) -> list[str]:
     except Exception as e:
         with open(log_path, "a") as log:
             log.write(f"ERROR fetching playlist IDs: {e}\n")
+        return []
+
+
+def _get_channel_new_ids(sub: dict, log_path: str) -> list[str]:
+    """
+    For channels: use yt-dlp --flat-playlist to get the 15 most recent
+    video IDs. More reliable than the YouTube RSS feed, which can fall
+    behind by days or stop updating entirely for some channels.
+    Returns only IDs not already in the archive.
+    """
+    archive = _load_archive(sub["id"])
+    cmd = [
+        "yt-dlp",
+        "--flat-playlist",
+        "--playlist-end", "15",
+        "--print", "id",
+        "--quiet",
+        "--no-warnings",
+        sub["url"],
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        ids = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        new_ids = [vid_id for vid_id in ids if vid_id not in archive]
+        return new_ids
+    except Exception as e:
+        with open(log_path, "a") as log:
+            log.write(f"ERROR fetching channel IDs: {e}\n")
         return []
 
 
@@ -403,7 +437,7 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
         log_path = os.path.join(LOGS_DIR, f"{sub_id}.log")
         _job_start(job_id, sub_id, sub["name"], trigger)
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        timestamp = datetime.now(_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
         with open(log_path, "a") as log:
             log.write(f"\n{'='*60}\n{timestamp}  [{trigger.upper()}]\n{'='*60}\n")
 
@@ -411,16 +445,7 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
             if _is_playlist(sub["url"]):
                 new_ids = _get_playlist_new_ids(sub, log_path)
             else:
-                channel_id = _resolve_channel_id(sub)
-                if not channel_id:
-                    with open(log_path, "a") as log:
-                        log.write("ERROR: Could not resolve channel ID\n")
-                    _job_finish(job_id, 1)
-                    return
-
-                rss_ids  = _fetch_rss_video_ids(channel_id)
-                archive  = _load_archive(sub_id)
-                new_ids  = [vid for vid in rss_ids if vid not in archive]
+                new_ids = _get_channel_new_ids(sub, log_path)
 
             _job_update(job_id, videos_found=len(new_ids))
 
@@ -698,3 +723,170 @@ def get_job(job_id: str):
     if not job:
         raise HTTPException(404, "Job not found")
     return job
+
+
+# ---------------------------------------------------------------------------
+# Dashboard helpers
+# ---------------------------------------------------------------------------
+
+def _sub_status(sub_id: str, enabled: bool) -> tuple[str, Optional[str]]:
+    """Return (status_string, last_error_or_None) for a subscription."""
+    with _running_subs_lock:
+        if sub_id in _running_subs:
+            return "running", None
+    if not enabled:
+        return "idle", None
+    with _jobs_lock:
+        sub_jobs = [j for j in _jobs.values() if j["sub_id"] == sub_id]
+    if not sub_jobs:
+        return "ok", None
+    last_job = max(sub_jobs, key=lambda j: j["started_at"])
+    if last_job["status"] == "failed":
+        return "error", f"Exit code {last_job['exit_code']}"
+    return "ok", None
+
+
+def _count_downloads_today() -> int:
+    today = datetime.now(_TZ).strftime("%Y-%m-%d")
+    if not os.path.exists(DOWNLOADS_LOG):
+        return 0
+    count = 0
+    with open(DOWNLOADS_LOG) as f:
+        for line in f:
+            if line.startswith(today):
+                count += 1
+    return count
+
+
+def _downloads_today_by_name() -> dict:
+    today = datetime.now(_TZ).strftime("%Y-%m-%d")
+    counts: dict[str, int] = {}
+    if not os.path.exists(DOWNLOADS_LOG):
+        return counts
+    with open(DOWNLOADS_LOG) as f:
+        for line in f:
+            if not line.startswith(today):
+                continue
+            parts = line.strip().split("\t")
+            if len(parts) >= 2:
+                counts[parts[1]] = counts.get(parts[1], 0) + 1
+    return counts
+
+
+# ---------------------------------------------------------------------------
+# Dashboard routes
+# ---------------------------------------------------------------------------
+
+@app.get("/dashboard")
+def dashboard(request: Request):
+    return templates.TemplateResponse("dashboard.html", {"request": request})
+
+
+@app.get("/api/status")
+def api_status():
+    subs = all_subs()
+    today = datetime.now(_TZ).strftime("%Y-%m-%d")
+
+    last_checked_id = None
+    last_checked_name = None
+    last_checked_at = None
+    for s in subs:
+        if s["last_checked"]:
+            if last_checked_at is None or s["last_checked"] > last_checked_at:
+                last_checked_at = s["last_checked"]
+                last_checked_id = s["id"]
+                last_checked_name = s["name"]
+
+    errors_today = 0
+    with _jobs_lock:
+        for job in _jobs.values():
+            if job["status"] == "failed" and job.get("started_at", "").startswith(today):
+                errors_today += 1
+
+    return {
+        "subscription_count": len(subs),
+        "downloads_today": _count_downloads_today(),
+        "last_checked_id": last_checked_id,
+        "last_checked_name": last_checked_name,
+        "last_checked_at": last_checked_at,
+        "errors_today": errors_today,
+    }
+
+
+@app.get("/api/subscriptions")
+def api_subscriptions():
+    subs = all_subs()
+    dl_by_name = _downloads_today_by_name()
+    result = []
+    for s in subs:
+        status, last_error = _sub_status(s["id"], bool(s["enabled"]))
+        result.append({
+            "id": s["id"],
+            "name": s["name"],
+            "url": s["url"],
+            "interval_hours": s["interval_hours"],
+            "quality": s["quality"],
+            "enabled": bool(s["enabled"]),
+            "status": status,
+            "last_checked_at": s["last_checked"],
+            "last_error": last_error,
+            "downloads_today": dl_by_name.get(s["name"], 0),
+        })
+    return result
+
+
+@app.get("/api/downloads")
+def api_downloads(limit: int = 200):
+    if not os.path.exists(DOWNLOADS_LOG):
+        return []
+    with open(DOWNLOADS_LOG) as f:
+        lines = f.readlines()
+    entries = []
+    for line in reversed(lines[-limit:]):
+        parts = line.strip().split("\t")
+        if len(parts) != 3:
+            continue
+        ts_str, channel_name, filename = parts
+        basename = os.path.basename(filename)
+        vid_match = re.search(r'\[([a-zA-Z0-9_-]+)\]\.[^.]+$', basename)
+        video_id = vid_match.group(1) if vid_match else ""
+        title_match = re.match(r'^(.+)_\(\d{4}_\d{2}_\d{2}\)_\[', basename)
+        title = title_match.group(1) if title_match else basename
+        entries.append({
+            "video_id": video_id,
+            "title": title,
+            "channel_id": channel_name,
+            "downloaded_at": ts_str,
+        })
+    return entries
+
+
+@app.get("/api/log/{sub_id}")
+def api_log(sub_id: str, lines: int = 500):
+    if not get_sub(sub_id):
+        raise HTTPException(404, "Subscription not found")
+    log_path = os.path.join(LOGS_DIR, f"{sub_id}.log")
+    if not os.path.exists(log_path):
+        return []
+    with open(log_path) as f:
+        content = f.readlines()
+    return [line.rstrip("\n") for line in content[-lines:]]
+
+
+@app.post("/api/check/{sub_id}")
+def api_check(sub_id: str):
+    if not get_sub(sub_id):
+        raise HTTPException(404, "Subscription not found")
+    threading.Thread(target=run_subscription, args=(sub_id, "manual"), daemon=True).start()
+    return {"status": "triggered"}
+
+
+@app.post("/api/check-all")
+def api_check_all():
+    subs = all_subs()
+    triggered = []
+    for s in subs:
+        if s["enabled"]:
+            threading.Thread(target=run_subscription, args=(s["id"], "manual"), daemon=True).start()
+            triggered.append(s["id"])
+    return {"status": "triggered", "count": len(triggered)}

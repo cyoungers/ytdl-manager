@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ytdl-manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0f172a; color: #f1f5f9; }
+    .log-content::-webkit-scrollbar { width: 6px; height: 6px; }
+    .log-content::-webkit-scrollbar-track { background: #1e293b; }
+    .log-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spinning { display: inline-block; animation: spin 1.2s linear infinite; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+  <div class="flex items-center gap-3">
+    <span class="text-xl font-bold text-slate-100">ytdl-manager</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span id="last-refresh" class="text-xs text-slate-500"></span>
+    <button onclick="checkAll()" class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded-lg font-medium transition-colors">
+      Check All
+    </button>
+    <button onclick="doRefresh()" class="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 rounded-lg font-medium transition-colors">
+      &#8635; Refresh
+    </button>
+  </div>
+</header>
+
+<!-- Stat bar -->
+<div class="px-6 pt-5 pb-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+  <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+    <div class="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Subscriptions</div>
+    <div id="stat-subs" class="text-3xl font-bold">—</div>
+  </div>
+  <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+    <div class="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Downloads Today</div>
+    <div id="stat-downloads" class="text-3xl font-bold text-green-400">—</div>
+  </div>
+  <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+    <div class="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Last Checked</div>
+    <div id="stat-last-id" class="text-base font-semibold truncate">—</div>
+    <div id="stat-last-time" class="text-xs text-slate-400 mt-0.5">—</div>
+  </div>
+  <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+    <div class="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Errors (today)</div>
+    <div id="stat-errors" class="text-3xl font-bold text-red-400">—</div>
+  </div>
+</div>
+
+<!-- Main content -->
+<div class="px-6 pb-32 grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+  <!-- Subscriptions table (2/3) -->
+  <div class="lg:col-span-2 bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
+      <h2 class="font-semibold text-slate-100">Subscriptions</h2>
+      <div class="flex gap-1.5">
+        <button onclick="setFilter('all')" id="filter-all"
+          class="filter-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-600 text-white">All</button>
+        <button onclick="setFilter('error')" id="filter-error"
+          class="filter-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-700 text-slate-400 hover:bg-slate-600">Errors</button>
+        <button onclick="setFilter('running')" id="filter-running"
+          class="filter-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-700 text-slate-400 hover:bg-slate-600">Downloading</button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700 text-slate-400 text-xs uppercase tracking-wide">
+            <th class="text-left px-4 py-2.5 font-medium">Channel</th>
+            <th class="text-left px-4 py-2.5 font-medium">Status</th>
+            <th class="text-center px-3 py-2.5 font-medium">Quality</th>
+            <th class="text-center px-3 py-2.5 font-medium">Every</th>
+            <th class="text-left px-4 py-2.5 font-medium">Last Checked</th>
+            <th class="text-center px-3 py-2.5 font-medium">DL Today</th>
+            <th class="px-4 py-2.5"></th>
+          </tr>
+        </thead>
+        <tbody id="subs-tbody">
+          <tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recent downloads (1/3) -->
+  <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden flex flex-col">
+    <div class="px-4 py-3 border-b border-slate-700 flex-shrink-0">
+      <h2 class="font-semibold text-slate-100">Recent Downloads</h2>
+    </div>
+    <div id="downloads-list" class="overflow-y-auto divide-y divide-slate-700/60" style="max-height: 520px;">
+      <div class="px-4 py-10 text-center text-slate-500">Loading…</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Log viewer (fixed bottom panel) -->
+<div id="log-panel" class="fixed bottom-0 left-0 right-0 bg-slate-900 border-t-2 border-slate-600 shadow-2xl transition-transform duration-300"
+     style="height: 42vh; transform: translateY(100%); z-index: 40;">
+  <div class="flex items-center justify-between px-4 py-2 border-b border-slate-700 bg-slate-800">
+    <div class="flex items-center gap-3 min-w-0">
+      <span class="font-mono text-sm font-semibold text-slate-200 truncate" id="log-title">Log</span>
+      <button id="log-check-btn" onclick="checkFromLog()"
+        class="flex-shrink-0 px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded font-medium transition-colors">
+        Check Now
+      </button>
+    </div>
+    <button onclick="closeLog()" class="text-slate-400 hover:text-white text-xl leading-none px-2 flex-shrink-0">&#10005;</button>
+  </div>
+  <pre id="log-content"
+    class="log-content font-mono text-xs text-slate-300 p-4 overflow-auto bg-slate-950"
+    style="height: calc(42vh - 44px); white-space: pre-wrap; word-break: break-all;"></pre>
+</div>
+
+{% raw %}
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+const state = { subs: [], filter: 'all', logSubId: null };
+
+// ── API ───────────────────────────────────────────────────────────────────
+const api = {
+  status:    ()    => fetch('/api/status').then(r => r.json()),
+  subs:      ()    => fetch('/api/subscriptions').then(r => r.json()),
+  downloads: (n=50)=> fetch(`/api/downloads?limit=${n}`).then(r => r.json()),
+  log:       (id)  => fetch(`/api/log/${id}`).then(r => r.json()),
+  check:     (id)  => fetch(`/api/check/${id}`, {method:'POST'}).then(r => r.json()),
+  checkAll:  ()    => fetch('/api/check-all', {method:'POST'}).then(r => r.json()),
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return 'never';
+  const normalized = dateStr.replace(' UTC','Z').replace(' ','T');
+  const d = new Date(normalized);
+  if (isNaN(d.getTime())) return dateStr;
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 10)    return 'just now';
+  if (sec < 60)    return `${sec}s ago`;
+  if (sec < 3600)  return `${Math.floor(sec/60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec/3600)}h ago`;
+  return `${Math.floor(sec/86400)}d ago`;
+}
+
+function badge(status) {
+  const map = {
+    ok:      'bg-green-900/60 text-green-300 border-green-700',
+    running: 'bg-blue-900/60  text-blue-300  border-blue-700',
+    error:   'bg-red-900/60   text-red-300   border-red-700',
+    idle:    'bg-slate-700    text-slate-400 border-slate-600',
+  };
+  const labels = { ok:'ok', running:'downloading', error:'error', idle:'disabled' };
+  const cls = map[status] || map.ok;
+  const spin = status === 'running' ? '<span class="spinning mr-1">&#8635;</span>' : '';
+  return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cls}">${spin}${labels[status]||status}</span>`;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function renderStatus(s) {
+  document.getElementById('stat-subs').textContent      = s.subscription_count ?? '—';
+  document.getElementById('stat-downloads').textContent = s.downloads_today ?? '0';
+  document.getElementById('stat-errors').textContent    = s.errors_today ?? '0';
+  if (s.last_checked_name) {
+    document.getElementById('stat-last-id').textContent   = s.last_checked_name;
+    document.getElementById('stat-last-time').textContent = timeAgo(s.last_checked_at);
+  }
+}
+
+function renderSubscriptions(subs) {
+  state.subs = subs;
+  applyFilter();
+}
+
+function applyFilter() {
+  const tbody = document.getElementById('subs-tbody');
+  const f = state.filter;
+  const visible = state.subs.filter(s =>
+    f === 'all'     ? true :
+    f === 'error'   ? s.status === 'error' :
+    f === 'running' ? s.status === 'running' : true
+  );
+  if (!visible.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">No subscriptions match.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = visible.map(s => `
+    <tr class="border-b border-slate-700/40 hover:bg-slate-700/25 cursor-pointer transition-colors"
+        data-sub-id="${esc(s.id)}" data-sub-name="${esc(s.name)}"
+        onclick="viewLogFromRow(this)">
+      <td class="px-4 py-2.5 font-medium text-slate-100 max-w-[12rem] truncate" title="${esc(s.name)}">${esc(s.name)}</td>
+      <td class="px-4 py-2.5">
+        ${badge(s.status)}
+        ${s.last_error ? `<span class="ml-1.5 text-xs text-red-400 cursor-help" title="${esc(s.last_error)}">&#9888;</span>` : ''}
+      </td>
+      <td class="px-3 py-2.5 text-center text-xs text-slate-400">${esc(s.quality)}</td>
+      <td class="px-3 py-2.5 text-center text-xs text-slate-400">${s.interval_hours}h</td>
+      <td class="px-4 py-2.5 text-xs text-slate-400">${timeAgo(s.last_checked_at)}</td>
+      <td class="px-3 py-2.5 text-center text-sm font-semibold ${s.downloads_today > 0 ? 'text-green-400' : 'text-slate-600'}">${s.downloads_today}</td>
+      <td class="px-4 py-2.5 text-right">
+        <button onclick="checkSub(event,'${esc(s.id)}')"
+          class="px-2.5 py-1 text-xs bg-slate-700 hover:bg-blue-600 rounded font-medium transition-colors whitespace-nowrap">
+          Check
+        </button>
+      </td>
+    </tr>`).join('');
+}
+
+function renderDownloads(entries) {
+  const el = document.getElementById('downloads-list');
+  if (!entries.length) {
+    el.innerHTML = '<div class="px-4 py-10 text-center text-slate-500">No downloads yet.</div>';
+    return;
+  }
+  el.innerHTML = entries.map(e => `
+    <div class="px-4 py-2.5">
+      <div class="text-slate-200 text-xs leading-snug" title="${esc(e.title)}"
+           style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${esc(e.title)}</div>
+      <div class="flex justify-between mt-1 gap-2">
+        <span class="text-slate-500 text-xs truncate">${esc(e.channel_id)}</span>
+        <span class="text-slate-500 text-xs flex-shrink-0">${timeAgo(e.downloaded_at)}</span>
+      </div>
+    </div>`).join('');
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────
+function setFilter(f) {
+  state.filter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.remove('bg-slate-600','text-white');
+    b.classList.add('bg-slate-700','text-slate-400');
+  });
+  const btn = document.getElementById(`filter-${f}`);
+  if (btn) {
+    btn.classList.remove('bg-slate-700','text-slate-400');
+    btn.classList.add('bg-slate-600','text-white');
+  }
+  applyFilter();
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────
+async function checkSub(event, id) {
+  event.stopPropagation();
+  const btn = event.target;
+  btn.textContent = '…';
+  btn.disabled = true;
+  await api.check(id).catch(() => {});
+  setTimeout(doRefresh, 800);
+  setTimeout(() => { btn.textContent = 'Check'; btn.disabled = false; }, 2000);
+}
+
+async function checkAll() {
+  const count = state.subs.length;
+  if (!confirm(`Trigger a check for all ${count} subscriptions?`)) return;
+  await api.checkAll().catch(() => {});
+  setTimeout(doRefresh, 800);
+}
+
+function viewLogFromRow(row) {
+  viewLog(row.getAttribute('data-sub-id'), row.getAttribute('data-sub-name'));
+}
+
+async function viewLog(id, name) {
+  state.logSubId = id;
+  document.getElementById('log-title').textContent = name;
+  document.getElementById('log-content').textContent = 'Loading…';
+  openLog();
+  const lines = await api.log(id).catch(() => ['Error fetching log.']);
+  const content = Array.isArray(lines) ? lines.join('\n') : String(lines);
+  const pre = document.getElementById('log-content');
+  pre.textContent = content;
+  pre.scrollTop = pre.scrollHeight;
+}
+
+async function checkFromLog() {
+  if (!state.logSubId) return;
+  await api.check(state.logSubId).catch(() => {});
+  await viewLog(state.logSubId, document.getElementById('log-title').textContent);
+}
+
+function openLog() {
+  document.getElementById('log-panel').style.transform = 'translateY(0)';
+}
+
+function closeLog() {
+  document.getElementById('log-panel').style.transform = 'translateY(100%)';
+  state.logSubId = null;
+}
+
+// ── Refresh ───────────────────────────────────────────────────────────────
+async function doRefresh() {
+  try {
+    const [status, subs, downloads] = await Promise.all([
+      api.status(), api.subs(), api.downloads(200),
+    ]);
+    renderStatus(status);
+    renderSubscriptions(subs);
+    renderDownloads(downloads);
+    const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    document.getElementById('last-refresh').textContent = `Updated ${now}`;
+  } catch(e) {
+    console.error('Refresh failed:', e);
+    document.getElementById('last-refresh').textContent = 'Refresh failed';
+  }
+}
+
+doRefresh();
+</script>
+{% endraw %}
+</body>
+</html>

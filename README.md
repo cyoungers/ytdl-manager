@@ -17,14 +17,11 @@ automatically downloading new videos via yt-dlp.
 
 ## How It Works
 
-### Channels (RSS-based discovery)
-Channel subscriptions use YouTube's public RSS feed to discover new videos:
-```
-https://www.youtube.com/feeds/videos.xml?channel_id=UC...
-```
-This returns the 15 most recent videos instantly with no authentication required.
-Only the actual video downloads use yt-dlp. This eliminates the full-channel-scan
-problem that caused cookie rotation and bot detection issues.
+### Channels
+Channel subscriptions use `yt-dlp --flat-playlist --playlist-end 15` to discover
+the 15 most recent video IDs without downloading any video data. This is fast,
+always current, and avoids the stale-feed problem that YouTube's RSS feeds can
+exhibit (some channels' RSS feeds fall days or weeks behind).
 
 ### Playlists
 Playlist subscriptions use `yt-dlp --flat-playlist` to fetch video IDs only (no
@@ -54,7 +51,9 @@ ytdl-manager/
 ├── start.sh                # Container entrypoint — checks bgutil then starts uvicorn
 ├── app/
 │   ├── main.py
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── templates/
+│       └── dashboard.html  # Web dashboard UI (served at /dashboard)
 └── scripts/
     └── ytdl.sh             # Interactive management menu (run on Ubuntu host)
 ```
@@ -85,6 +84,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
 
 volumes:
   ytdl-data:
@@ -139,9 +143,9 @@ The easiest way to manage subscriptions is the interactive menu script:
 
 ## YouTube Cookies
 
-The `android_vr` player client used for downloads generally does not require
-cookies. However, keeping a cookies file available provides a fallback for any
-web client requests.
+Cookies are passed to every yt-dlp download call when a `cookies.txt` file is
+present at `/data/cookies.txt`. This is required for age-gated videos and can
+also help avoid bot-detection throttling.
 
 ### Refreshing cookies (if needed)
 
@@ -194,10 +198,12 @@ of YouTube seeing a burst of requests from the same IP.
 
 ## Shorts & Live Stream Filtering
 
-Videos are automatically skipped if:
+Videos are automatically skipped (non-fatally) if:
 - Duration is 3 minutes or less (`duration>180`)
 - URL contains `/shorts/`
 - Video is live or was live (`!is_live & !was_live`)
+- Video is age-gated and cookies cannot satisfy the age check
+- Video is a scheduled stream or premiere not yet started
 
 ---
 
@@ -365,6 +371,23 @@ curl "http://192.168.0.166:8911/downloads-log?lines=50" | jq
 
 Returns a list of successfully downloaded files with timestamp, subscription name,
 and filename.
+
+---
+
+## Web Dashboard
+
+A live dashboard is available at:
+```
+http://192.168.0.166:8911/dashboard
+```
+
+It shows:
+- **Stat bar** — total subscriptions, downloads today, last checked channel, errors today
+- **Subscriptions table** — all channels with status badges (ok / downloading / error / disabled), quality, interval, last checked time, downloads today, and a per-row "Check" button. Filter by All / Errors / Downloading.
+- **Recent downloads** — last 200 entries from `downloads.log` with title, channel, and time ago
+- **Log viewer** — click any row to open a bottom panel showing the last 500 lines of that subscription's log. Includes a "Check now" button.
+
+The dashboard has a manual Refresh button. Check All prompts for confirmation before triggering.
 
 ---
 
