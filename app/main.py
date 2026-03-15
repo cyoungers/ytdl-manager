@@ -661,7 +661,7 @@ class SubCreate(BaseModel):
     name:           Optional[str]  = None
     output_dir:     str
     interval_hours: float          = 6.0
-    quality:        str            = "1080"
+    quality:        str            = "1440"
     backfill:       bool           = False
     date_after:     Optional[str]  = None
 

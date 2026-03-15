@@ -179,12 +179,13 @@ Template: `%(title)s_(%(upload_date>%Y_%m_%d)s)_[%(id)s].%(ext)s`
 | Setting | Description |
 |---------|-------------|
 | `best` | No height cap — downloads highest available (4K if offered) |
-| `1080` | Caps at 1080p (default) |
+| `1440` | Caps at 1440p (default) |
+| `1080` | Caps at 1080p |
 | `720` | Caps at 720p — smaller files |
 | `480` | Caps at 480p — smallest files |
 
 `best` is recommended for channels that post in 4K. File sizes can be 3–5x
-larger than 1080p for 4K content.
+larger than 1440p for 4K content.
 
 ---
 
@@ -262,7 +263,7 @@ curl -X POST http://192.168.0.166:8911/subscriptions \
 | `name` | url | Friendly display name |
 | `output_dir` | required | Path inside the container (e.g. `/downloads/channelname`) |
 | `interval_hours` | `6` | How often to check for new videos |
-| `quality` | `1080` | `best`, `1080`, `720`, or `480` |
+| `quality` | `1440` | `best`, `1440`, `1080`, `720`, or `480` |
 | `backfill` | `false` | `true` = download full history on first run (playlists only) |
 | `date_after` | none | Only download videos on/after this date (playlists only) |
 
