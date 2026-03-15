@@ -149,13 +149,14 @@ def _extract_avatar_url(html: str) -> Optional[str]:
     return None
 
 
-def _fetch_channel_avatar(channel_url: str, assets_dir: str):
+def _fetch_channel_avatar(channel_url: str, assets_dirs: list[str]):
     """
     Fetch the channel homepage, extract the avatar image, resize it to 4:3
     (pillarboxing with black bars if the source is square/portrait), and save
-    it as assets/avatar.jpg inside assets_dir.
+    it as avatar.jpg in each directory in assets_dirs.
     """
-    os.makedirs(assets_dir, exist_ok=True)
+    for d in assets_dirs:
+        os.makedirs(d, exist_ok=True)
     try:
         req = urllib.request.Request(channel_url, headers=_SCRAPE_HEADERS)
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -191,8 +192,8 @@ def _fetch_channel_avatar(channel_url: str, assets_dir: str):
         else:
             canvas = img
 
-        save_path = os.path.join(assets_dir, "avatar.jpg")
-        canvas.save(save_path, "JPEG", quality=90)
+        for d in assets_dirs:
+            canvas.save(os.path.join(d, "avatar.jpg"), "JPEG", quality=90)
 
     except Exception:
         pass  # Avatar fetch is best-effort; don't fail subscription creation
@@ -706,9 +707,13 @@ def add_subscription(body: SubCreate):
     conn.close()
 
     assets_dir = os.path.join(body.output_dir, "assets")
-    os.makedirs(assets_dir, exist_ok=True)
+    channel_name = os.path.basename(body.output_dir.rstrip("/"))
+    root_dir = os.path.dirname(body.output_dir.rstrip("/"))
+    dvr_assets_dir = os.path.join(root_dir, "channelsDVRassets", channel_name, "assets")
+    for d in (assets_dir, dvr_assets_dir):
+        os.makedirs(d, exist_ok=True)
     threading.Thread(
-        target=_fetch_channel_avatar, args=(body.url, assets_dir), daemon=True
+        target=_fetch_channel_avatar, args=(body.url, [assets_dir, dvr_assets_dir]), daemon=True
     ).start()
 
     schedule_sub(sub_id, body.interval_hours)
