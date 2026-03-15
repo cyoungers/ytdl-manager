@@ -203,6 +203,12 @@ def _fetch_channel_avatar(channel_url: str, assets_dirs: list[str]):
 # URL helpers
 # ---------------------------------------------------------------------------
 
+def _handle_from_url(url: str) -> Optional[str]:
+    """Return the channel handle (without @) for URLs like youtube.com/@Handle."""
+    m = re.search(r'/@([\w-]+)', url)
+    return m.group(1) if m else None
+
+
 def _is_playlist(url: str) -> bool:
     return "playlist?list=" in url or "/playlist/" in url
 
@@ -699,7 +705,7 @@ def add_subscription(body: SubCreate):
         """INSERT INTO subscriptions
            (id, url, name, output_dir, interval_hours, quality, backfill, date_after, created_at)
            VALUES (?,?,?,?,?,?,?,?,?)""",
-        (sub_id, body.url, body.name or body.url, body.output_dir,
+        (sub_id, body.url, body.name or _handle_from_url(body.url) or body.url, body.output_dir,
          body.interval_hours, body.quality, int(body.backfill),
          body.date_after, datetime.now(timezone.utc).isoformat()),
     )
