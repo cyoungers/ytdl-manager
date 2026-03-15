@@ -1,3 +1,5 @@
+import io
+import json
 import os
 import re
 import sqlite3
@@ -8,6 +10,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+
+from PIL import Image
 
 _TZ = ZoneInfo("America/Los_Angeles")
 from typing import Optional
@@ -91,6 +95,107 @@ def all_subs() -> list[dict]:
     rows = conn.execute("SELECT * FROM subscriptions ORDER BY name ASC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Channel avatar helpers
+# ---------------------------------------------------------------------------
+
+_SCRAPE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/120.0.0.0 Safari/537.36"
+}
+
+
+def _extract_avatar_url(html: str) -> Optional[str]:
+    """
+    Extract the highest-resolution channel avatar URL from YouTube page HTML.
+    YouTube embeds page data as JSON in <script> tags; the channel avatar is
+    under c4TabbedHeaderRenderer -> avatar -> thumbnails.
+    """
+    # Try to find avatar thumbnails in the c4TabbedHeaderRenderer JSON block
+    m = re.search(
+        r'"c4TabbedHeaderRenderer".*?"avatar":\{"thumbnails":(\[[^\]]+\])',
+        html, re.DOTALL
+    )
+    if m:
+        try:
+            thumbnails = json.loads(m.group(1))
+            best = max(thumbnails, key=lambda t: t.get("width", 0) * t.get("height", 0))
+            url = best.get("url", "")
+            if url:
+                return url
+        except Exception:
+            pass
+
+    # Fallback: look for any "avatar" block with thumbnails
+    m = re.search(r'"avatar":\{"thumbnails":(\[[^\]]+\])', html)
+    if m:
+        try:
+            thumbnails = json.loads(m.group(1))
+            best = max(thumbnails, key=lambda t: t.get("width", 0) * t.get("height", 0))
+            url = best.get("url", "")
+            if url:
+                return url
+        except Exception:
+            pass
+
+    # Last resort: first yt3.ggpht.com URL (channel avatars, not video thumbnails)
+    m = re.search(r'"url":"(https://yt3\.ggpht\.com/[^"]+)"', html)
+    if m:
+        return m.group(1)
+
+    return None
+
+
+def _fetch_channel_avatar(channel_url: str, assets_dir: str):
+    """
+    Fetch the channel homepage, extract the avatar image, resize it to 4:3
+    (pillarboxing with black bars if the source is square/portrait), and save
+    it as assets/avatar.jpg inside assets_dir.
+    """
+    os.makedirs(assets_dir, exist_ok=True)
+    try:
+        req = urllib.request.Request(channel_url, headers=_SCRAPE_HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        avatar_url = _extract_avatar_url(html)
+        if not avatar_url:
+            return
+
+        # Request a high-resolution variant by bumping the size parameter
+        # YouTube avatar URLs often end with =s<N>-... ; replace with =s512
+        avatar_url = re.sub(r'=s\d+', '=s512', avatar_url)
+
+        img_req = urllib.request.Request(avatar_url, headers=_SCRAPE_HEADERS)
+        with urllib.request.urlopen(img_req, timeout=15) as resp:
+            img_data = resp.read()
+
+        img = Image.open(io.BytesIO(img_data)).convert("RGB")
+        w, h = img.size
+        target_ratio = 4 / 3
+        current_ratio = w / h
+
+        if current_ratio < target_ratio:
+            # Narrower than 4:3 — add black bars on left and right
+            new_w = int(h * target_ratio)
+            canvas = Image.new("RGB", (new_w, h), (0, 0, 0))
+            canvas.paste(img, ((new_w - w) // 2, 0))
+        elif current_ratio > target_ratio:
+            # Wider than 4:3 — add black bars on top and bottom
+            new_h = int(w / target_ratio)
+            canvas = Image.new("RGB", (w, new_h), (0, 0, 0))
+            canvas.paste(img, (0, (new_h - h) // 2))
+        else:
+            canvas = img
+
+        save_path = os.path.join(assets_dir, "avatar.jpg")
+        canvas.save(save_path, "JPEG", quality=90)
+
+    except Exception:
+        pass  # Avatar fetch is best-effort; don't fail subscription creation
 
 
 # ---------------------------------------------------------------------------
@@ -599,6 +704,13 @@ def add_subscription(body: SubCreate):
     )
     conn.commit()
     conn.close()
+
+    assets_dir = os.path.join(body.output_dir, "assets")
+    os.makedirs(assets_dir, exist_ok=True)
+    threading.Thread(
+        target=_fetch_channel_avatar, args=(body.url, assets_dir), daemon=True
+    ).start()
+
     schedule_sub(sub_id, body.interval_hours)
     threading.Thread(target=run_subscription, args=(sub_id, "initial"), daemon=True).start()
     return {"id": sub_id, "message": "Subscription added — initial run started in background"}

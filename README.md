@@ -12,6 +12,7 @@ automatically downloading new videos via yt-dlp.
 - **ffmpeg** — merges separate video/audio streams into mp4
 - **Node.js** — JavaScript runtime required by yt-dlp for YouTube extraction
 - **bgutil-ytdlp-pot-provider** — generates PO tokens to avoid YouTube bot detection
+- **Pillow** — image processing for channel avatar fetching and resizing
 
 ---
 
@@ -222,6 +223,11 @@ curl http://192.168.0.166:8911/health
 ---
 
 ### Add a subscription
+
+When a subscription is added, an `assets/` subdirectory is created inside
+`output_dir` and the channel's avatar image is fetched in the background,
+resized to 4:3 (black pillarbox bars added for square avatars), and saved as
+`assets/avatar.jpg`.
 
 ```bash
 # Monitor a channel (RSS-based — no date_after needed)
