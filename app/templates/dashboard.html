@@ -279,6 +279,28 @@ function viewLogFromRow(row) {
   viewLog(row.getAttribute('data-sub-id'), row.getAttribute('data-sub-name'));
 }
 
+let _logRefreshTimer = null;
+
+async function refreshLog() {
+  if (!state.logSubId) return;
+  const pre = document.getElementById('log-content');
+  const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+  const lines = await api.log(state.logSubId).catch(() => null);
+  if (lines === null) return;
+  const content = Array.isArray(lines) ? lines.join('\n') : String(lines);
+  pre.textContent = content;
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+
+function scheduleLogRefresh() {
+  if (_logRefreshTimer) clearTimeout(_logRefreshTimer);
+  if (!state.logSubId) return;
+  _logRefreshTimer = setTimeout(async () => {
+    await refreshLog();
+    scheduleLogRefresh();
+  }, 5000);
+}
+
 async function viewLog(id, name) {
   state.logSubId = id;
   document.getElementById('log-title').textContent = name;
@@ -289,12 +311,13 @@ async function viewLog(id, name) {
   const pre = document.getElementById('log-content');
   pre.textContent = content;
   pre.scrollTop = pre.scrollHeight;
+  scheduleLogRefresh();
 }
 
 async function checkFromLog() {
   if (!state.logSubId) return;
   await api.check(state.logSubId).catch(() => {});
-  await viewLog(state.logSubId, document.getElementById('log-title').textContent);
+  await refreshLog();
 }
 
 function openLog() {
@@ -304,6 +327,7 @@ function openLog() {
 function closeLog() {
   document.getElementById('log-panel').style.transform = 'translateY(100%)';
   state.logSubId = null;
+  if (_logRefreshTimer) { clearTimeout(_logRefreshTimer); _logRefreshTimer = null; }
 }
 
 // ── yt-dlp version check & update ─────────────────────────────────────────
