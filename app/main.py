@@ -674,6 +674,7 @@ class SubCreate(BaseModel):
 
 
 class SubUpdate(BaseModel):
+    url:            Optional[str]   = None
     name:           Optional[str]   = None
     output_dir:     Optional[str]   = None
     interval_hours: Optional[float] = None
