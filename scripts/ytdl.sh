@@ -46,26 +46,63 @@ list_subs_raw() { api /subscriptions | jq -r '.[] | "\(.id)\t\(.name)\t\(.enable
 
 pick_sub() {
   # Prints "id name" lines and lets user pick; sets $SUB_ID and $SUB_NAME
+  # Accepts a number OR a partial name search string
   local lines
   lines=$(api /subscriptions | jq -r '.[] | "\(.id)  \(.name)  [\(if .enabled then "enabled" else "paused" end)]"')
   if [[ -z "$lines" ]]; then warn "No subscriptions found."; return 1; fi
   echo
   echo -e "${BOLD}  Select a subscription:${RESET}"
   local i=1
-  declare -a ids names
+  declare -a ids names display_lines
   while IFS= read -r line; do
     local id name
     id=$(echo "$line" | awk '{print $1}')
     name=$(echo "$line" | awk '{print $2}')
-    ids+=("$id"); names+=("$name")
+    ids+=("$id"); names+=("$name"); display_lines+=("$line")
     printf "  ${YELLOW}%2d)${RESET} %s\n" "$i" "$line"
     ((i++))
   done <<< "$lines"
   echo
-  read -rp "  Choice [1-$((i-1))]: " choice
-  [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice < i )) || { err "Invalid choice"; return 1; }
-  SUB_ID="${ids[$((choice-1))]}"
-  SUB_NAME="${names[$((choice-1))]}"
+  read -rp "  Choice [1-$((i-1))] or name search: " choice
+
+  if [[ "$choice" =~ ^[0-9]+$ ]]; then
+    (( choice >= 1 && choice < i )) || { err "Invalid choice"; return 1; }
+    SUB_ID="${ids[$((choice-1))]}"
+    SUB_NAME="${names[$((choice-1))]}"
+  else
+    # Partial name search (case-insensitive)
+    local lower match_ids=() match_names=() match_lines=()
+    lower=$(echo "$choice" | tr '[:upper:]' '[:lower:]')
+    for j in "${!names[@]}"; do
+      local lname
+      lname=$(echo "${names[$j]}" | tr '[:upper:]' '[:lower:]')
+      if [[ "$lname" == *"$lower"* ]]; then
+        match_ids+=("${ids[$j]}")
+        match_names+=("${names[$j]}")
+        match_lines+=("${display_lines[$j]}")
+      fi
+    done
+    if (( ${#match_ids[@]} == 0 )); then
+      err "No subscription matching '$choice'"; return 1
+    elif (( ${#match_ids[@]} == 1 )); then
+      SUB_ID="${match_ids[0]}"
+      SUB_NAME="${match_names[0]}"
+      ok "Matched: $SUB_NAME"
+    else
+      echo -e "  ${BOLD}Multiple matches — select one:${RESET}"
+      local k=1
+      for j in "${!match_ids[@]}"; do
+        printf "  ${YELLOW}%2d)${RESET} %s\n" "$k" "${match_lines[$j]}"
+        ((k++))
+      done
+      echo
+      read -rp "  Choice [1-$((k-1))]: " choice2
+      [[ "$choice2" =~ ^[0-9]+$ ]] && (( choice2 >= 1 && choice2 < k )) || { err "Invalid choice"; return 1; }
+      SUB_ID="${match_ids[$((choice2-1))]}"
+      SUB_NAME="${match_names[$((choice2-1))]}"
+      ok "Matched: $SUB_NAME"
+    fi
+  fi
 }
 
 # ── ADD SUBSCRIPTION ───────────────────────────────────────────────────────

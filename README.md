@@ -140,6 +140,8 @@ The easiest way to manage subscriptions is the interactive menu script:
 | 11 | Refresh cookies | Copies latest cookies.txt from ~/Downloads into container |
 | 12 | Container operations | Status, logs, restart, update yt-dlp |
 
+When a command asks you to select a subscription, you can enter a number **or** type a partial name (case-insensitive). A unique match is selected automatically; multiple matches show a filtered list to pick from.
+
 ---
 
 ## YouTube Cookies
