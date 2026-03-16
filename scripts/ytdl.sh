@@ -371,15 +371,19 @@ cmd_delete() {
 # ── REFRESH COOKIES ────────────────────────────────────────────────────────
 cmd_cookies() {
   hdr "Refresh YouTube Cookies"
-  # Pick the most recently modified cookies*.txt file in Downloads
+  # Prefer www.youtube.com_cookies.txt; fall back to most-recent cookies*.txt
   local src
-  src=$(ls -t "$HOME/Downloads/cookies"*.txt 2>/dev/null | head -1)
+  if [[ -f "$HOME/Downloads/www.youtube.com_cookies.txt" ]]; then
+    src="$HOME/Downloads/www.youtube.com_cookies.txt"
+  else
+    src=$(ls -t "$HOME/Downloads/cookies"*.txt 2>/dev/null | head -1)
+  fi
   if [[ -z "$src" || ! -f "$src" ]]; then
-    err "File not found: $src"
+    err "No cookies file found in ~/Downloads"
     echo
     echo "  1. Open Chrome and log into YouTube"
     echo "  2. Click the 'Get cookies.txt LOCALLY' extension"
-    echo "  3. Export — saves to ~/Downloads/cookies.txt"
+    echo "  3. Export — saves to ~/Downloads/cookies.txt or www.youtube.com_cookies.txt"
     echo "  4. Re-run this option"
     pause; return
   fi
@@ -402,8 +406,9 @@ cmd_cookies() {
 
   if docker cp "$src" "$container:/data/cookies.txt"; then
     ok "Cookies updated!"
-    # Remove all cookies*.txt files from Downloads
-    rm -f "$HOME/Downloads/cookies"*.txt && echo -e "  Cleaned up local cookies files from ~/Downloads"
+    # Remove all cookies files (both naming conventions) from Downloads
+    rm -f "$HOME/Downloads/cookies"*.txt "$HOME/Downloads/www.youtube.com_cookies.txt" \
+      && echo -e "  Cleaned up local cookies files from ~/Downloads"
   else
     err "Copy failed"
   fi
