@@ -150,17 +150,22 @@ also help avoid bot-detection throttling.
 
 ### Refreshing cookies (if needed)
 
-1. Open **Chrome** on the Ubuntu machine and log into YouTube
-2. Install the **"Get cookies.txt LOCALLY"** Chrome extension
-3. Go to **youtube.com**, click the extension icon → **Export**
-   (saves `cookies.txt` to `~/Downloads`)
-4. Run the management script and select option **11**
-   - The script automatically picks the newest `cookies*.txt` file
-   - Copies it into the container
+This follows the [yt-dlp recommended process](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies).
+Using a private window prevents Chrome from rotating the session cookies automatically.
+
+1. Open a **new incognito/private window** in Chrome and log into YouTube
+2. In that same tab, navigate to `https://www.youtube.com/robots.txt`
+3. Install the **"Get cookies.txt LOCALLY"** Chrome extension if needed
+4. Click the extension icon → **Export**
+   (saves `cookies.txt` or `www.youtube.com_cookies.txt` to `~/Downloads`)
+5. **Close the incognito window** — this preserves the exported session
+6. Run the management script and select option **11**
+   - Prefers `www.youtube.com_cookies.txt` if present, otherwise picks the newest `cookies*.txt`
+   - Copies it into the container as `/data/cookies.txt`
    - Deletes all local cookie files from Downloads afterward
 
-**Note:** Do not log out of YouTube in Chrome after exporting —
-logging out immediately invalidates the cookies.
+**Note:** Close the incognito window rather than logging out — logging out invalidates
+the cookies immediately, and leaving the window open risks Chrome rotating them.
 
 ---
 
