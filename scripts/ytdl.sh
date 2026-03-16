@@ -327,6 +327,8 @@ cmd_update() {
   echo
   echo -e "  Updating ${BOLD}$SUB_NAME${RESET} (leave blank to keep current value)"
   echo
+  read -rp "  url: " url
+  read -rp "  name: " name
   read -rp "  interval_hours: " interval
   read -rp "  quality (best/1440/1080/720/480): " quality
   echo
@@ -342,6 +344,8 @@ cmd_update() {
   echo
 
   local payload="{}"
+  [[ -n "$url"        ]] && payload=$(echo "$payload" | jq --arg v "$url" '.url=$v')
+  [[ -n "$name"       ]] && payload=$(echo "$payload" | jq --arg v "$name" '.name=$v')
   [[ -n "$interval"   ]] && payload=$(echo "$payload" | jq --argjson v "$interval" '.interval_hours=$v')
   [[ -n "$quality"    ]] && payload=$(echo "$payload" | jq --arg v "$quality" '.quality=$v')
   [[ -n "$date_after" ]] && payload=$(echo "$payload" | jq --arg v "$date_after" '.date_after=$v')
