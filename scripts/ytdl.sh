@@ -324,13 +324,21 @@ cmd_toggle() {
 cmd_update() {
   hdr "Update Subscription"
   pick_sub || { pause; return; }
+  local sub
+  sub=$(api "/subscriptions/$SUB_ID") || { err "Failed to fetch subscription"; pause; return; }
+  local cur_url cur_name cur_interval cur_quality cur_date_after
+  cur_url=$(echo "$sub"        | jq -r '.url')
+  cur_name=$(echo "$sub"       | jq -r '.name')
+  cur_interval=$(echo "$sub"   | jq -r '.interval_hours')
+  cur_quality=$(echo "$sub"    | jq -r '.quality')
+  cur_date_after=$(echo "$sub" | jq -r '.date_after // "none"')
   echo
   echo -e "  Updating ${BOLD}$SUB_NAME${RESET} (leave blank to keep current value)"
   echo
-  read -rp "  url: " url
-  read -rp "  name: " name
-  read -rp "  interval_hours: " interval
-  read -rp "  quality (best/1440/1080/720/480): " quality
+  read -rp "  url         [${cur_url}]: " url
+  read -rp "  name        [${cur_name}]: " name
+  read -rp "  interval_hours [${cur_interval}]: " interval
+  read -rp "  quality (best/1440/1080/720/480) [${cur_quality}]: " quality
   echo
   echo -e "  ${BOLD}date_after${RESET} — only download videos uploaded on or after this date (playlists only)."
   echo    "  Format: YYYYMMDD  or  a relative value like today-Ndays / today-Nmonths / today-Nyear"
@@ -340,7 +348,7 @@ cmd_update() {
   echo    "             today-6months  (last 6 months)"
   echo    "             today-1year    (last year)"
   echo    "  Leave blank to keep current value. Enter 'clear' to remove the filter."
-  read -rp "  date_after: " date_after
+  read -rp "  date_after  [${cur_date_after}]: " date_after
   echo
 
   local payload="{}"
