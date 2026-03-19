@@ -270,7 +270,7 @@ curl -X POST http://192.168.0.166:8911/subscriptions \
 | `name` | url | Friendly display name |
 | `output_dir` | required | Path inside the container (e.g. `/downloads/channelname`) |
 | `interval_hours` | `6` | How often to check for new videos |
-| `quality` | `1440` | `best`, `1440`, `1080`, `720`, or `480` |
+| `quality` | `best` | `best`, `1440`, `1080`, `720`, or `480` |
 | `backfill` | `false` | `true` = download full history on first run (playlists only) |
 | `date_after` | none | Only download videos on/after this date (playlists only) |
 
@@ -401,7 +401,7 @@ It shows:
 - **Recent downloads** — last 200 entries from `downloads.log` with title, channel, and time ago
 - **Log viewer** — click any row to open a bottom panel showing the last 500 lines of that subscription's log. Includes a "Check now" button.
 
-The dashboard has a manual Refresh button. Check All prompts for confirmation before triggering.
+The header has a manual **Refresh** button, a **Check All** button (prompts for confirmation), and a **Scan Media** button that triggers a personal media scan on the ChannelsDVR server.
 
 ---
 

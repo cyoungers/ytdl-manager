@@ -337,11 +337,11 @@ def _append_archive(sub_id: str, video_id: str):
 # ---------------------------------------------------------------------------
 
 FORMAT_MAP = {
-    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
-    "1440": "bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1440]+bestaudio/best[height<=1440]/best",
-    "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-    "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-    "480":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best",
+    "best": "bestvideo+bestaudio/best",
+    "1440": "bestvideo[height<=1440]+bestaudio/best[height<=1440]",
+    "1080": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+    "720":  "bestvideo[height<=720]+bestaudio/best[height<=720]",
+    "480":  "bestvideo[height<=480]+bestaudio/best",
 }
 
 OUTPUT_TEMPLATE = "%(title)s_(%(upload_date>%Y_%m_%d)s)_[%(id)s].%(ext)s"
@@ -406,6 +406,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "This live event will begin",     # Scheduled stream not yet started
         "Premieres in",                   # YouTube premiere not yet started
         "Sign in to confirm your age",    # Age-gated content, skip gracefully
+        "Join this channel to get access to members-only content",  # Members-only videos, skip gracefully
     ]
     if result.returncode != 0 and any(p in result.stdout for p in non_fatal_patterns):
         return 0
@@ -1020,6 +1021,26 @@ def api_check_all():
             triggered.append(s["id"])
     return {"status": "triggered", "count": len(triggered)}
 
+
+@app.put("/api/scan-media")
+def api_scan_media():
+    import urllib.request
+    req = urllib.request.Request(
+        "http://192.168.0.166:8089/dvr/scanner/scan",
+        method="PUT",
+        data=b"",
+        headers={
+            "Accept": "*/*",
+            "Origin": "http://192.168.0.166:8089",
+            "Referer": "http://192.168.0.166:8089/admin/settings/status",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3.1 Safari/605.1.15",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return {"ok": True, "status": resp.status}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @app.post("/api/ytdlp-update")
 def api_ytdlp_update():
