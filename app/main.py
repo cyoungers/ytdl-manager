@@ -906,9 +906,15 @@ def _downloads_today_by_name() -> dict:
 # Dashboard routes
 # ---------------------------------------------------------------------------
 
+@app.get("/")
 @app.get("/dashboard")
 def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
+
+
+@app.get("/help")
+def help_page(request: Request):
+    return templates.TemplateResponse("help.html", {"request": request})
 
 
 @app.get("/api/status")

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ytdl-manager – Help</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0f172a; color: #f1f5f9; }
+    h2 { color: #e2e8f0; font-size: 1.25rem; font-weight: 700; margin-top: 2rem; margin-bottom: 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid #334155; }
+    h3 { color: #cbd5e1; font-size: 1rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.4rem; }
+    p  { color: #94a3b8; line-height: 1.7; margin-bottom: 0.75rem; }
+    ul, ol { color: #94a3b8; line-height: 1.8; margin-bottom: 0.75rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.2rem; }
+    code { background: #1e293b; color: #7dd3fc; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.82rem; font-family: monospace; }
+    pre  { background: #0f1e2e; border: 1px solid #334155; border-radius: 8px; padding: 1rem; overflow-x: auto; margin-bottom: 1rem; }
+    pre code { background: none; padding: 0; color: #93c5fd; font-size: 0.82rem; }
+    .callout { background: #1e293b; border-left: 3px solid #3b82f6; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+    .callout.warn { border-color: #f59e0b; }
+    .callout.danger { border-color: #ef4444; }
+    .callout p { margin-bottom: 0; }
+    a { color: #7dd3fc; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center gap-3 sticky top-0 z-10">
+  <a href="/" class="text-slate-400 hover:text-white text-sm transition-colors">← Dashboard</a>
+  <span class="text-slate-600">|</span>
+  <span class="text-xl font-bold text-slate-100">ytdl-manager</span>
+  <span class="text-slate-500 text-sm">Help &amp; Reference</span>
+</header>
+
+<div class="max-w-3xl mx-auto px-6 py-8">
+
+  <!-- TOC -->
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 mb-8">
+    <div class="text-slate-300 font-semibold mb-3">Contents</div>
+    <ol class="list-decimal pl-5 space-y-1 text-sm">
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#dashboard">Using the Dashboard</a></li>
+      <li><a href="#subscriptions">Subscriptions</a></li>
+      <li><a href="#quality">Quality Settings</a></li>
+      <li><a href="#cookies">YouTube Cookies (Important)</a></li>
+      <li><a href="#filters">Video Filters</a></li>
+      <li><a href="#logs">Reading the Log Viewer</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#maintenance">Maintenance &amp; Updates</a></li>
+      <li><a href="#architecture">Architecture Reference</a></li>
+    </ol>
+  </div>
+
+  <!-- 1. Overview -->
+  <h2 id="overview">1. Overview</h2>
+  <p>ytdl-manager is a self-hosted YouTube subscription manager running in Docker on the MINI-S server (192.168.0.166, port 8911). It monitors YouTube channels and playlists on a schedule and automatically downloads new videos using yt-dlp.</p>
+  <ul>
+    <li>Downloads are stored on the server's local disk, organized by channel name.</li>
+    <li>Each subscription has its own download archive — already-downloaded videos are never re-downloaded.</li>
+    <li>Video quality, check frequency, and filters are configurable per subscription.</li>
+    <li>The dashboard refreshes automatically every 5–10 seconds.</li>
+  </ul>
+
+  <!-- 2. Dashboard -->
+  <h2 id="dashboard">2. Using the Dashboard</h2>
+
+  <h3>Header buttons</h3>
+  <ul>
+    <li><strong>Scan Media</strong> — rescans the downloads folder and updates the Recent Downloads list.</li>
+    <li><strong>Check All</strong> — immediately triggers a check for every subscription (asks for confirmation first).</li>
+    <li><strong>Refresh</strong> — manually refreshes the dashboard data.</li>
+    <li><strong>yt-dlp [version]</strong> — shows the currently installed yt-dlp version. If a newer release is available on GitHub, an <em>Update available</em> button appears — click it to update in place without a full Docker rebuild.</li>
+  </ul>
+
+  <h3>Stat bar</h3>
+  <ul>
+    <li><strong>Subscriptions</strong> — total number of subscriptions configured.</li>
+    <li><strong>Downloads Today</strong> — number of videos downloaded since midnight UTC.</li>
+    <li><strong>Last Checked</strong> — which subscription was checked most recently and when.</li>
+    <li><strong>Errors (today)</strong> — number of failed download runs today.</li>
+  </ul>
+
+  <h3>Subscription table</h3>
+  <p>Click any row to open that subscription's log in the bottom panel. Use the filter buttons (All / Errors / Downloading) to narrow the list. The <strong>Check</strong> button on each row triggers an immediate check for that subscription only.</p>
+
+  <h3>Recent Downloads panel</h3>
+  <p>Shows the 200 most recently downloaded videos, newest first. Updates automatically on each refresh cycle.</p>
+
+  <h3>Log panel</h3>
+  <p>Slides up from the bottom when you click a subscription row. Shows the full yt-dlp output log for that channel. Refreshes every 5 seconds while open. The <strong>Check Now</strong> button inside the panel triggers a new check for the currently viewed subscription.</p>
+
+  <!-- 3. Subscriptions -->
+  <h2 id="subscriptions">3. Subscriptions</h2>
+
+  <h3>How subscriptions work</h3>
+  <p>Each subscription monitors either a YouTube <strong>channel</strong> or a <strong>playlist</strong>. On each check cycle, ytdl-manager fetches the most recent video IDs and downloads any that haven't been seen before (tracked via a per-subscription archive file).</p>
+  <ul>
+    <li><strong>Channels</strong> — fetched via YouTube RSS feed; returns the 15 most recent videos.</li>
+    <li><strong>Playlists</strong> — fetched using yt-dlp's flat playlist mode; returns all video IDs.</li>
+  </ul>
+
+  <h3>Check interval</h3>
+  <p>Each subscription has an <code>interval_hours</code> setting. The scheduler checks whether enough time has elapsed since the last check before triggering a new one. Common intervals in use:</p>
+  <ul>
+    <li><strong>1h</strong> — high-frequency channels (live cams, DVR channels)</li>
+    <li><strong>4–6h</strong> — regular content creators</li>
+    <li><strong>24h</strong> — infrequently-updated channels</li>
+  </ul>
+
+  <h3>Adding or editing subscriptions</h3>
+  <p>Subscriptions are stored in the SQLite database at <code>/data/subscriptions.db</code> inside the container. There is no UI editor yet — modifications require direct database access via SSH:</p>
+  <pre><code>ssh cyoungers@192.168.0.166
+docker exec -it ytdl-manager python3
+# Then use sqlite3 or Python sqlite3 module</code></pre>
+
+  <h3>Status values</h3>
+  <ul>
+    <li><strong>ok</strong> (green) — last run completed successfully.</li>
+    <li><strong>downloading</strong> (blue, spinning) — a check/download is actively running right now.</li>
+    <li><strong>error</strong> (red) — last run ended with a non-zero exit code. Click the row to see the log.</li>
+    <li><strong>idle</strong> (grey) — subscription is disabled or has never been checked.</li>
+  </ul>
+
+  <!-- 4. Quality -->
+  <h2 id="quality">4. Quality Settings</h2>
+  <p>Each subscription has a <code>quality</code> setting that controls the yt-dlp format selector. Available options:</p>
+  <ul>
+    <li><strong>best</strong> — highest available resolution (no cap). May be 4K for channels that publish it.</li>
+    <li><strong>1440</strong> — up to 1440p (2K). This is the default for all current subscriptions.</li>
+    <li><strong>1080</strong> — up to 1080p Full HD.</li>
+    <li><strong>720</strong> — up to 720p HD.</li>
+    <li><strong>480</strong> — up to 480p SD.</li>
+  </ul>
+  <p>All downloads prefer <code>mp4</code> video with <code>m4a</code> audio and are merged into a single <code>.mp4</code> file. If the preferred codec isn't available, yt-dlp falls back to the best available format at or below the target resolution.</p>
+  <div class="callout">
+    <p>💡 If videos look low quality (blocky/pixelated), the most likely cause is expired YouTube cookies — see the <a href="#cookies">Cookies section</a> below.</p>
+  </div>
+
+  <!-- 5. Cookies -->
+  <h2 id="cookies">5. YouTube Cookies (Important)</h2>
+  <p>YouTube requires authentication cookies to serve high-resolution adaptive streams (1080p, 1440p, 4K). Without valid cookies, yt-dlp falls back to format 18 — a combined 360p stream — causing the blocky/artifacted video quality.</p>
+
+  <div class="callout warn">
+    <p>⚠️ Cookies expire periodically (weeks to months). When downloads start looking low quality again, it's time to refresh them.</p>
+  </div>
+
+  <h3>Why the incognito method is required</h3>
+  <p>YouTube actively rotates cookies on open browser tabs as a security measure. If you export cookies from a regular Chrome window where YouTube is open, those cookies will expire within hours or days. The incognito method exports a "frozen" session that isn't being rotated.</p>
+
+  <h3>Step-by-step: exporting cookies correctly</h3>
+  <ol>
+    <li>Install the <strong>"Get cookies.txt LOCALLY"</strong> extension in Chrome.
+      <br><small style="color:#64748b">Important: make sure it's the "LOCALLY" version. The non-LOCALLY version was reported as malware and removed from the Chrome Web Store.</small></li>
+    <li>Open a new <strong>incognito window</strong> in Chrome.</li>
+    <li>Log into YouTube in that incognito window.</li>
+    <li>In the same tab, navigate to: <code>https://www.youtube.com/robots.txt</code></li>
+    <li>Click the "Get cookies.txt LOCALLY" extension icon and export cookies for <code>youtube.com</code>. Save the file as <code>cookies.txt</code>.</li>
+    <li><strong>Close the incognito window immediately</strong> — this ensures the session is never rotated by an open tab.</li>
+  </ol>
+
+  <div class="callout danger">
+    <p>🚫 Do NOT use <code>yt-dlp --cookies-from-browser chrome</code> to export cookies. This exports your regular browser cookies, not the frozen incognito session, and they will expire quickly.</p>
+  </div>
+
+  <h3>Transferring cookies to the server</h3>
+  <pre><code># Copy from Mac to server
+scp ~/Downloads/cookies.txt cyoungers@192.168.0.166:/tmp/cookies.txt
+
+# Install into the Docker container
+ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cookies.txt"</code></pre>
+
+  <h3>Verifying cookies are working</h3>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager yt-dlp \
+  --cookies /data/cookies.txt \
+  --extractor-args 'youtube:player_client=mweb' \
+  -F 'https://www.youtube.com/watch?v=jNQXAC9IVRw' \
+  2>&1 | grep -v 'sb[0-9]\|storyboard\|mhtml'"</code></pre>
+  <p>You should see 20+ format options including 1080p and 1440p. If you only see format 18 (360p), the cookies are not valid.</p>
+
+  <!-- 6. Filters -->
+  <h2 id="filters">6. Video Filters</h2>
+  <p>All downloads are subject to a built-in <code>--match-filter</code> that silently skips videos that don't meet these criteria:</p>
+  <ul>
+    <li><strong>Duration &gt; 3 minutes</strong> — skips Shorts and very short clips.</li>
+    <li><strong>Not currently live</strong> — skips active live streams.</li>
+    <li><strong>Was not a live stream</strong> — skips VODs of past live streams.</li>
+    <li><strong>URL does not contain <code>/shorts/</code></strong> — belt-and-suspenders Shorts filter.</li>
+  </ul>
+  <p>Additionally, the following error conditions are treated as <strong>non-failures</strong> and do not mark a subscription as errored:</p>
+  <ul>
+    <li>"does not pass filter" — video was skipped by the above rules.</li>
+    <li>"This live event will begin in a few moments" — a scheduled stream not yet started.</li>
+    <li>"Premieres in" — a YouTube Premiere not yet released.</li>
+  </ul>
+  <p>These cases appear in the log but result in <code>Exit code: 0</code> (success).</p>
+
+  <!-- 7. Logs -->
+  <h2 id="logs">7. Reading the Log Viewer</h2>
+  <p>Click any subscription row on the dashboard to open its log. The log file is the raw yt-dlp output for that subscription, appended across all runs. Here's how to read it:</p>
+
+  <h3>Run header</h3>
+  <pre><code>============================================================
+2026-03-22 14:30:00 UTC  [SCHEDULER]
+============================================================
+Found 3 new video(s)</code></pre>
+  <p>Each run starts with a timestamp and whether it was triggered by the <code>SCHEDULER</code> or a <code>MANUAL</code> check.</p>
+
+  <h3>Per-video section</h3>
+  <pre><code>--- Downloading abc123xyz ---
+[youtube] abc123xyz: Downloading webpage
+[youtube] [jsc:node] Solving JS challenges using node
+[info] abc123xyz: Downloading 1 format(s): 399+251
+[download] Destination: /downloads/channel/Title_(2026_03_22)_[abc123xyz].f399.mp4
+[download] 100% of 850MiB
+[Merger] Merging formats into "/downloads/channel/Title_(2026_03_22)_[abc123xyz].mp4"</code></pre>
+  <p>The format IDs tell you the quality being downloaded:</p>
+  <ul>
+    <li><strong>399+251</strong> — AV1 video (1080p) + Opus audio ✅ Good quality</li>
+    <li><strong>400+251</strong> — AV1 video (1440p) + Opus audio ✅ Great quality</li>
+    <li><strong>137+140</strong> — H.264 video (1080p) + AAC audio ✅ Good quality</li>
+    <li><strong>18</strong> (single number, no +) — combined 360p stream ❌ Cookies are expired</li>
+  </ul>
+
+  <h3>Run footer</h3>
+  <pre><code>Run complete. Exit code: 0</code></pre>
+  <ul>
+    <li><strong>Exit code: 0</strong> — success (including filter-skipped videos).</li>
+    <li><strong>Exit code: 1</strong> — one or more videos had a genuine download error. Scroll up to find the <code>ERROR:</code> line.</li>
+  </ul>
+
+  <!-- 8. Troubleshooting -->
+  <h2 id="troubleshooting">8. Troubleshooting</h2>
+
+  <h3>Videos look blocky / low quality (360p)</h3>
+  <p>This is almost always expired YouTube cookies. The log will show <code>[info] abc123: Downloading 1 format(s): 18</code> (a single format number, no <code>+</code>). Fix: refresh cookies using the incognito method described in <a href="#cookies">Section 5</a>.</p>
+
+  <h3>Exit code: 1 on every run</h3>
+  <p>Open the log and search for <code>ERROR:</code> lines. Common causes:</p>
+  <ul>
+    <li><strong>"Sign in to confirm you're not a bot"</strong> — cookies are expired or missing.</li>
+    <li><strong>"Video unavailable"</strong> — the video was deleted or made private.</li>
+    <li><strong>"Rate limited by YouTube"</strong> — too many requests in a short time. Wait an hour and it resolves on its own.</li>
+    <li><strong>"Requested format is not available"</strong> — usually also a cookies issue; YouTube is withholding high-res formats.</li>
+  </ul>
+
+  <h3>n challenge solving failed</h3>
+  <p>This warning appears when yt-dlp can't solve YouTube's "n parameter" throttle challenge. It requires Node.js to be available inside the container. If seen frequently, it may indicate the challenge script is outdated — updating yt-dlp usually fixes it.</p>
+
+  <h3>Subscription stuck in "downloading" status</h3>
+  <p>If a subscription shows as downloading but the log isn't updating, the download process may have hung. Restart the container:</p>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker restart ytdl-manager"</code></pre>
+
+  <h3>All subscriptions show "never checked" after a restart</h3>
+  <p>The <code>last_checked</code> times are stored in the SQLite database, which lives in a Docker named volume (<code>ytdl-data</code>). They persist across restarts. If they appear reset, the volume may have been accidentally deleted during a <code>docker compose down -v</code>.</p>
+
+  <!-- 9. Maintenance -->
+  <h2 id="maintenance">9. Maintenance &amp; Updates</h2>
+
+  <h3>Updating yt-dlp</h3>
+  <p>The easiest way is via the dashboard — if a newer version is available on GitHub, an <em>Update available</em> button appears next to the version number in the header. Click it to update in place without any Docker rebuild.</p>
+  <p>Alternatively, from the command line:</p>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager yt-dlp -U"</code></pre>
+
+  <h3>Deploying Python code changes (no rebuild)</h3>
+  <p>For changes to <code>main.py</code> only (no new dependencies):</p>
+  <pre><code>ssh cyoungers@192.168.0.166 "cd ~/ai/ytdl-manager && git pull && \
+  docker cp app/main.py ytdl-manager:/app/main.py && \
+  docker restart ytdl-manager"</code></pre>
+
+  <h3>Full Docker rebuild (new dependencies or Dockerfile changes)</h3>
+  <pre><code>ssh cyoungers@192.168.0.166 "cd ~/ai/ytdl-manager && git pull && \
+  docker compose down && \
+  docker compose build --no-cache && \
+  docker compose up -d"</code></pre>
+  <div class="callout warn">
+    <p>⚠️ A full rebuild takes 2–5 minutes and downloads ~200MB of packages. Avoid it unless you've changed <code>Dockerfile</code> or <code>requirements.txt</code>.</p>
+  </div>
+
+  <h3>Accessing the database</h3>
+  <pre><code>ssh cyoungers@192.168.0.166
+docker exec -it ytdl-manager python3 -c "
+import sqlite3, json
+c = sqlite3.connect('/data/subscriptions.db')
+c.row_factory = sqlite3.Row
+rows = c.execute('SELECT id, name, status, last_checked_at FROM subscriptions').fetchall()
+for r in rows: print(dict(r))
+"</code></pre>
+
+  <h3>Viewing recent successful downloads</h3>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager tail -50 /data/downloads.log"</code></pre>
+
+  <!-- 10. Architecture -->
+  <h2 id="architecture">10. Architecture Reference</h2>
+
+  <h3>Infrastructure</h3>
+  <ul>
+    <li><strong>Host:</strong> Ubuntu, hostname <code>cyoungers-MINI-S</code> (192.168.0.166)</li>
+    <li><strong>Container:</strong> <code>ytdl-manager</code> — Python 3.12 + FastAPI + yt-dlp</li>
+    <li><strong>Port:</strong> 8911 on host → 8080 in container</li>
+    <li><strong>Repo:</strong> <code>https://github.com/cyoungers/ytdl-manager</code></li>
+    <li><strong>Project path on host:</strong> <code>~/ai/ytdl-manager</code></li>
+  </ul>
+
+  <h3>Data volume (<code>ytdl-data</code>)</h3>
+  <ul>
+    <li><code>/data/subscriptions.db</code> — SQLite database (subscriptions, jobs, download history)</li>
+    <li><code>/data/archives/{id}.txt</code> — per-subscription yt-dlp download archive (prevents re-downloads)</li>
+    <li><code>/data/logs/{id}.log</code> — per-subscription yt-dlp output logs</li>
+    <li><code>/data/cookies.txt</code> — YouTube session cookies</li>
+    <li><code>/data/downloads.log</code> — plain text log of all successful downloads</li>
+  </ul>
+
+  <h3>How a channel check works</h3>
+  <ol>
+    <li>Scheduler triggers a check for a subscription based on <code>interval_hours</code>.</li>
+    <li>For channels: fetch YouTube RSS feed → extract up to 15 video IDs.</li>
+    <li>For playlists: run <code>yt-dlp --flat-playlist --print id</code> → extract all video IDs.</li>
+    <li>Compare against the download archive to find new IDs.</li>
+    <li>For each new video ID: run yt-dlp with format selector, filters, cookies, and n-challenge solver.</li>
+    <li>On success: append video ID to archive; log the filename to <code>downloads.log</code>.</li>
+    <li>Wait 5 seconds between videos to avoid YouTube rate limiting.</li>
+  </ol>
+
+  <h3>YouTube client used</h3>
+  <p>Downloads use the <code>mweb</code> (mobile web) player client. This client supports cookies, receives the full list of available formats, and works with yt-dlp's Node.js-based n-challenge solver (bgutil). The <code>android_vr</code> client was previously used but is skipped by yt-dlp when cookies are present.</p>
+
+</div><!-- end max-w container -->
+</body>
+</html>
