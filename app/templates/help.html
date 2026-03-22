@@ -154,7 +154,7 @@ docker exec -it ytdl-manager python3
     <li>Open a new <strong>incognito window</strong> in Chrome.</li>
     <li>Log into YouTube in that incognito window.</li>
     <li>In the same tab, navigate to: <code>https://www.youtube.com/robots.txt</code></li>
-    <li>Click the "Get cookies.txt LOCALLY" extension icon and export cookies for <code>youtube.com</code> using the &#34;Export&#34; option — the file saves as <code>www.youtube.com_cookies.txt</code>.</li>
+    <li>Click the "Get cookies.txt LOCALLY" extension icon and export cookies for <code>youtube.com</code>. Save the file as <code>cookies.txt</code>.</li>
     <li><strong>Close the incognito window immediately</strong> — this ensures the session is never rotated by an open tab.</li>
   </ol>
 
@@ -164,7 +164,7 @@ docker exec -it ytdl-manager python3
 
   <h3>Transferring cookies to the server</h3>
   <pre><code># Copy from Mac to server
-scp ~/Downloads/www.youtube.com_cookies.txt cyoungers@192.168.0.166:/tmp/cookies.txt
+scp ~/Downloads/cookies.txt cyoungers@192.168.0.166:/tmp/cookies.txt
 
 # Install into the Docker container
 ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cookies.txt"</code></pre>
@@ -174,7 +174,7 @@ ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cooki
   --js-runtimes node \
   --cookies /data/cookies.txt \
   --extractor-args 'youtube:player_client=mweb' \
-  -F 'https://www.youtube.com/watch?v=KbasAdObT0I' \
+  -F 'https://www.youtube.com/watch?v=jNQXAC9IVRw' \
   2>&1 | grep -v 'sb[0-9]\|storyboard\|mhtml'"</code></pre>
   <p>You should see 20+ format options including 1080p and 1440p. If you only see format 18 (360p), the cookies are not valid.</p>
 
@@ -286,6 +286,11 @@ c.row_factory = sqlite3.Row
 rows = c.execute('SELECT id, name, status, last_checked_at FROM subscriptions').fetchall()
 for r in rows: print(dict(r))
 "</code></pre>
+
+  <h3>Re-staggering the schedule</h3>
+  <p>If subscriptions start bunching up and running at the same time, hit the stagger endpoint to redistribute them evenly across their interval windows:</p>
+  <pre><code>curl -X POST http://192.168.0.166:8911/api/stagger</code></pre>
+  <p>This reschedules all enabled subscriptions in APScheduler directly — subscriptions with the same interval are spread evenly across that interval. For example, 11 hourly subs will fire ~5.5 minutes apart; 27 six-hourly subs will fire ~13 minutes apart. The staggering persists indefinitely since each subscription recurs independently from its own start time.</p>
 
   <h3>Viewing recent successful downloads</h3>
   <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager tail -50 /data/downloads.log"</code></pre>
