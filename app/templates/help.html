@@ -154,7 +154,7 @@ docker exec -it ytdl-manager python3
     <li>Open a new <strong>incognito window</strong> in Chrome.</li>
     <li>Log into YouTube in that incognito window.</li>
     <li>In the same tab, navigate to: <code>https://www.youtube.com/robots.txt</code></li>
-    <li>Click the "Get cookies.txt LOCALLY" extension icon and export cookies for <code>youtube.com</code>. Save the file as <code>cookies.txt</code>.</li>
+    <li>Click the "Get cookies.txt LOCALLY" extension icon and export cookies for <code>youtube.com</code> using the &#34;Export&#34; option — the file saves as <code>www.youtube.com_cookies.txt</code>.</li>
     <li><strong>Close the incognito window immediately</strong> — this ensures the session is never rotated by an open tab.</li>
   </ol>
 
@@ -164,7 +164,7 @@ docker exec -it ytdl-manager python3
 
   <h3>Transferring cookies to the server</h3>
   <pre><code># Copy from Mac to server
-scp ~/Downloads/cookies.txt cyoungers@192.168.0.166:/tmp/cookies.txt
+scp ~/Downloads/www.youtube.com_cookies.txt cyoungers@192.168.0.166:/tmp/cookies.txt
 
 # Install into the Docker container
 ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cookies.txt"</code></pre>
