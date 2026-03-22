@@ -620,21 +620,21 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
 # Scheduler
 # ---------------------------------------------------------------------------
 
-def schedule_sub(sub_id: str, interval_hours: float, jitter: bool = False):
+def schedule_sub(sub_id: str, interval_hours: float, jitter: bool = False, start_date=None):
     import random
     from datetime import timedelta
     job_id = f"sub_{sub_id}"
     if scheduler.get_job(job_id):
         scheduler.remove_job(job_id)
-    # Spread out subscriptions by delaying the first run by a random offset
-    # up to the full interval, so they don't all fire at the same time
     kwargs = dict(
         hours=interval_hours,
         id=job_id,
         args=[sub_id, "scheduler"],
         replace_existing=True,
     )
-    if jitter:
+    if start_date is not None:
+        kwargs["start_date"] = start_date
+    elif jitter:
         jitter_seconds = random.randint(0, int(interval_hours * 3600))
         kwargs["start_date"] = datetime.now(timezone.utc) + timedelta(seconds=jitter_seconds)
     scheduler.add_job(run_subscription, "interval", **kwargs)
@@ -654,6 +654,27 @@ def startup():
         if sub["enabled"]:
             schedule_sub(sub["id"], sub["interval_hours"], jitter=True)
 
+
+
+@app.post("/api/stagger")
+def stagger_subscriptions():
+    """Reschedule all enabled subs evenly staggered within each interval group."""
+    from datetime import timedelta
+    subs = [s for s in all_subs() if s["enabled"]]
+    by_interval = {}
+    for s in subs:
+        by_interval.setdefault(s["interval_hours"], []).append(s)
+    now = datetime.now(timezone.utc)
+    scheduled = []
+    for interval_hours, group in sorted(by_interval.items()):
+        n = len(group)
+        spacing_seconds = (interval_hours * 3600) / n
+        for i, sub in enumerate(sorted(group, key=lambda s: s["name"])):
+            start = now + timedelta(seconds=i * spacing_seconds)
+            schedule_sub(sub["id"], interval_hours, start_date=start)
+            scheduled.append({"name": sub["name"], "interval_hours": interval_hours,
+                               "next_run": start.isoformat()})
+    return {"staggered": len(scheduled), "subscriptions": scheduled}
 
 @app.on_event("shutdown")
 def shutdown():
