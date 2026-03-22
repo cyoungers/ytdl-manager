@@ -171,6 +171,7 @@ ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cooki
 
   <h3>Verifying cookies are working</h3>
   <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager yt-dlp \
+  --js-runtimes node \
   --cookies /data/cookies.txt \
   --extractor-args 'youtube:player_client=mweb' \
   -F 'https://www.youtube.com/watch?v=jNQXAC9IVRw' \
