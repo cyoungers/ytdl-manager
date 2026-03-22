@@ -432,7 +432,7 @@ cmd_cookies() {
     echo
     echo "  1. Open Chrome and log into YouTube"
     echo "  2. Click the 'Get cookies.txt LOCALLY' extension"
-    echo "  3. Export — saves to ~/Downloads/cookies.txt or www.youtube.com_cookies.txt"
+    echo "  3. Export — saves as ~/Downloads/www.youtube.com_cookies.txt"
     echo "  4. Re-run this option"
     pause; return
   fi
@@ -518,7 +518,8 @@ cmd_container() {
   echo "  2) Show recent container logs (stderr/stdout)"
   echo "  3) Restart container"
   echo "  4) Update yt-dlp inside container"
-  echo "  5) Back"
+  echo "  5) Rebuild container (full rebuild from scratch)"
+  echo "  6) Back"
   echo
   read -rp "  Choice: " c
   case "$c" in
@@ -545,6 +546,12 @@ cmd_container() {
       [[ -z "$container" ]] && { err "Container not found"; pause; return; }
       echo "  Updating yt-dlp..."
       docker exec "$container" pip install -q --upgrade yt-dlp && ok "yt-dlp updated" || err "Failed"
+      ;;
+    5)
+      read -rp "  Full rebuild (takes a few minutes)? [y/N]: " confirm
+      [[ "$confirm" =~ ^[Yy]$ ]] || { warn "Cancelled."; pause; return; }
+      echo "  Rebuilding container..."
+      ~/ai/ytdl-manager/scripts/rebuild.sh && ok "Rebuild complete" || err "Rebuild failed"
       ;;
   esac
   pause

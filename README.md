@@ -159,7 +159,7 @@ Using a private window prevents Chrome from rotating the session cookies automat
 2. In that same tab, navigate to `https://www.youtube.com/robots.txt`
 3. Install the **"Get cookies.txt LOCALLY"** Chrome extension if needed
 4. Click the extension icon → **Export**
-   (saves `cookies.txt` or `www.youtube.com_cookies.txt` to `~/Downloads`)
+   (saves as `www.youtube.com_cookies.txt` to `~/Downloads`)
 5. **Close the incognito window** — this preserves the exported session
 6. Run the management script and select option **11**
    - Prefers `www.youtube.com_cookies.txt` if present, otherwise picks the newest `cookies*.txt`
