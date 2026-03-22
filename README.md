@@ -34,10 +34,15 @@ Both modes download each new video individually via a separate yt-dlp call, with
 download archive are skipped automatically.
 
 ### Bot Detection Avoidance
-- Uses the `android_vr` YouTube player client, which bypasses most bot detection
-- bgutil PO token provider generates GVS PO tokens when needed
-- Scheduling jitter spreads subscription checks randomly across each interval
-  window so they don't all fire at once
+- Uses the `mweb` (mobile web) YouTube player client — supports cookies and returns
+  the full format list including 1080p/1440p/4K. The `android_vr` client is skipped
+  by yt-dlp when cookies are present.
+- `--js-runtimes node` is required — yt-dlp defaults to Deno since v2026.03.17,
+  which is not installed. Node.js is available in the container.
+- bgutil PO token provider generates GVS PO tokens when needed (script-node mode;
+  the HTTP server on port 4416 is not used — the warning about it is harmless)
+- Scheduling uses explicit staggered start dates via `/api/stagger` so subscriptions
+  spread evenly across each interval window
 - Shorts and live streams are filtered out (`duration>180`, `/shorts/` URL exclusion)
 
 ---
@@ -54,7 +59,8 @@ ytdl-manager/
 │   ├── main.py
 │   ├── requirements.txt
 │   └── templates/
-│       └── dashboard.html  # Web dashboard UI (served at /dashboard)
+│       ├── dashboard.html  # Web dashboard UI (served at / and /dashboard)
+│       └── help.html       # Help & reference docs (served at /help)
 └── scripts/
     └── ytdl.sh             # Interactive management menu (run on Ubuntu host)
 ```
@@ -220,9 +226,17 @@ larger than 1440p for 4K content.
 ## Scheduling
 
 Each subscription fires on its own interval (e.g. every 6 hours). On container
-startup, a random jitter is applied so subscriptions spread out across the
-interval window instead of all firing at the same time. This reduces the chance
-of YouTube seeing a burst of requests from the same IP.
+startup, a random jitter is applied as an initial spread. For precise control,
+call the stagger endpoint to redistribute all subscriptions evenly:
+
+```bash
+curl -X POST http://192.168.0.166:8911/api/stagger
+```
+
+This talks directly to APScheduler and sets explicit, evenly-spaced start dates
+for each subscription within its interval group — e.g. 11 hourly subs fire ~5.5
+minutes apart; 27 six-hourly subs fire ~13 minutes apart. APScheduler state is
+in-memory only, so after a container restart call `/api/stagger` again.
 
 ---
 
@@ -422,7 +436,7 @@ It shows:
 - **Recent downloads** — last 200 entries from `downloads.log` with title, channel, and time ago
 - **Log viewer** — click any row to open a bottom panel showing the last 500 lines of that subscription's log. Includes a "Check now" button.
 
-The header has a manual **Refresh** button, a **Check All** button (prompts for confirmation), and a **Scan Media** button that triggers a personal media scan on the ChannelsDVR server.
+The header has a manual **Refresh** button, a **Check All** button (prompts for confirmation), a **Scan Media** button that triggers a personal media scan on the ChannelsDVR server, and a **Help** button that opens the help & reference page at `/help` in a new tab.
 
 ---
 
