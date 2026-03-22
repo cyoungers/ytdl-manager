@@ -150,7 +150,28 @@ Cookies are passed to every yt-dlp download call when a `cookies.txt` file is
 present at `/data/cookies.txt`. This is required for age-gated videos and can
 also help avoid bot-detection throttling.
 
-### Refreshing cookies (if needed)
+### Refreshing cookies — automated (recommended)
+
+Run the automation script on the Mac:
+
+```bash
+~/ai/refresh-cookies-auto.sh
+```
+
+This handles the full process automatically:
+1. Opens Chrome incognito, signs in with the bot account via passkey
+2. Detects login completion by polling the tab URL
+3. Navigates to `https://www.youtube.com/robots.txt`
+4. Opens the "Get cookies.txt LOCALLY" extension and clicks Export
+5. SCPs the file to MINI-S and installs it into the container
+6. Verifies cookies by fetching a test video title with yt-dlp
+
+**Prerequisites (one-time):**
+- "Get cookies.txt LOCALLY" Chrome extension with `Ctrl+Shift+Y` shortcut set in `chrome://extensions/shortcuts`
+- `cliclick` installed: `brew install cliclick`
+- `YT_EMAIL` set correctly at the top of the script
+
+### Refreshing cookies — manual fallback
 
 This follows the [yt-dlp recommended process](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies).
 Using a private window prevents Chrome from rotating the session cookies automatically.
