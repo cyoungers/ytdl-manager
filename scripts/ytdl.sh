@@ -512,6 +512,25 @@ cmd_downloads() {
 }
 
 
+cmd_cookies_auto() {
+  hdr "Refresh YouTube Cookies (Automated)"
+  local script="$HOME/ai/refresh-cookies-auto.sh"
+  if [[ ! -f "$script" ]]; then
+    err "Script not found: $script"
+    echo "  Expected at: $script (Mac only)"
+    pause; return
+  fi
+  echo "  This runs the automated cookie refresh script on this machine."
+  echo "  It will open Chrome incognito, log into YouTube via passkey,"
+  echo "  export cookies, and install them into the container."
+  echo
+  read -rp "  Run refresh-cookies-auto.sh now? [y/N]: " confirm
+  [[ "$confirm" =~ ^[Yy]$ ]] || { warn "Cancelled."; pause; return; }
+  echo
+  bash "$script"
+  pause
+}
+
 cmd_container() {
   hdr "Container Operations"
   echo "  1) Show container status"
@@ -594,8 +613,9 @@ main_menu() {
     echo    "    10) Health check"
     echo
     echo -e "  ${YELLOW}Maintenance${RESET}"
-    echo    "    11) Refresh YouTube cookies"
-    echo    "    12) Container operations"
+    echo    "    11) Refresh YouTube cookies (manual)"
+    echo    "    12) Refresh YouTube cookies (auto — Mac script)"
+    echo    "    13) Container operations"
     echo
     echo    "    q)  Quit"
     echo
@@ -612,7 +632,8 @@ main_menu() {
       9)  cmd_downloads ;;
       10) cmd_health    ;;
       11) cmd_cookies   ;;
-      12) cmd_container ;;
+      12) cmd_cookies_auto ;;
+      13) cmd_container ;;
       q|Q) echo; ok "Bye!"; echo; exit 0 ;;
       *) warn "Unknown option" ;;
     esac
