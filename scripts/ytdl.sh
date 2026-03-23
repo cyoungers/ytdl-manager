@@ -514,20 +514,18 @@ cmd_downloads() {
 
 cmd_cookies_auto() {
   hdr "Refresh YouTube Cookies (Automated)"
-  local script="$HOME/ai/refresh-cookies-auto.sh"
-  if [[ ! -f "$script" ]]; then
-    err "Script not found: $script"
-    echo "  Expected at: $script (Mac only)"
-    pause; return
-  fi
-  echo "  This runs the automated cookie refresh script on this machine."
-  echo "  It will open Chrome incognito, log into YouTube via passkey,"
-  echo "  export cookies, and install them into the container."
+  echo "  This script must be run on your Mac — it requires Chrome,"
+  echo "  AppleScript, and cliclick which are not available on this server."
   echo
-  read -rp "  Run refresh-cookies-auto.sh now? [y/N]: " confirm
-  [[ "$confirm" =~ ^[Yy]$ ]] || { warn "Cancelled."; pause; return; }
+  echo -e "  Run this on your Mac:"
   echo
-  bash "$script"
+  echo -e "    ${BOLD}~/ai/refresh-cookies-auto.sh${RESET}"
+  echo
+  echo "  The script will:"
+  echo "    - Open Chrome incognito and log into YouTube via passkey"
+  echo "    - Export cookies using the 'Get cookies.txt LOCALLY' extension"
+  echo "    - SCP the cookie file to this server automatically"
+  echo "    - Install it into the container and verify it works"
   pause
 }
 
