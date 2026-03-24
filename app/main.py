@@ -406,7 +406,8 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "This live event will begin",     # Scheduled stream not yet started
         "Premieres in",                   # YouTube premiere not yet started
         "Sign in to confirm your age",    # Age-gated content, skip gracefully
-        "members-only content",                           # Members-only videos, skip gracefully
+        "members-only content",                           # Members-only videos (variant 1)
+        "available to this channel's members",            # Members-only videos (variant 2)
     ]
     if result.returncode != 0 and any(p in result.stdout for p in non_fatal_patterns):
         return 0
