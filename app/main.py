@@ -362,7 +362,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
     """Download a single video by ID."""
     os.makedirs(sub["output_dir"], exist_ok=True)
     archive_path = os.path.join(ARCHIVES_DIR, f"{sub['id']}.txt")
-    output_tmpl  = os.path.join(sub["output_dir"], OUTPUT_TEMPLATE)
+    output_tmpl  = OUTPUT_TEMPLATE
     fmt          = FORMAT_MAP.get(sub["quality"], FORMAT_MAP["1080"])
     video_url    = f"https://www.youtube.com/watch?v={video_id}"
 
@@ -373,6 +373,7 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "--format",              fmt,
         "--match-filter",        "duration>180 & !is_live & !was_live & original_url!*=/shorts/",
         "--merge-output-format", "mp4",
+        "--paths",              f"home:{sub['output_dir']}",
         "--paths",              "temp:/tmp",
         "--retries",             "10",
         "--fragment-retries",    "10",
