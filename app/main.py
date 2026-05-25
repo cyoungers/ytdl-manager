@@ -57,24 +57,35 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS subscriptions (
-            id             TEXT PRIMARY KEY,
-            url            TEXT NOT NULL,
-            name           TEXT,
-            output_dir     TEXT NOT NULL,
-            interval_hours REAL NOT NULL DEFAULT 6.0,
-            quality        TEXT NOT NULL DEFAULT '1080',
-            backfill       INTEGER NOT NULL DEFAULT 0,
-            date_after     TEXT,
-            channel_id     TEXT,
-            enabled        INTEGER NOT NULL DEFAULT 1,
-            initialized    INTEGER NOT NULL DEFAULT 0,
-            last_checked   TEXT,
-            created_at     TEXT NOT NULL
+            id                      TEXT PRIMARY KEY,
+            url                     TEXT NOT NULL,
+            name                    TEXT,
+            output_dir              TEXT NOT NULL,
+            interval_hours          REAL NOT NULL DEFAULT 6.0,
+            quality                 TEXT NOT NULL DEFAULT '1080',
+            backfill                INTEGER NOT NULL DEFAULT 0,
+            date_after              TEXT,
+            channel_id              TEXT,
+            enabled                 INTEGER NOT NULL DEFAULT 1,
+            initialized             INTEGER NOT NULL DEFAULT 0,
+            last_checked            TEXT,
+            created_at              TEXT NOT NULL,
+            filter_min_duration     INTEGER NOT NULL DEFAULT 180,
+            filter_exclude_shorts   INTEGER NOT NULL DEFAULT 1,
+            filter_exclude_live     INTEGER NOT NULL DEFAULT 1,
+            filter_exclude_was_live INTEGER NOT NULL DEFAULT 1
         )
     """)
     # Migrations for existing installs
     cols = [r[1] for r in conn.execute("PRAGMA table_info(subscriptions)").fetchall()]
-    for col, typedef in [("date_after", "TEXT"), ("channel_id", "TEXT")]:
+    for col, typedef in [
+        ("date_after",              "TEXT"),
+        ("channel_id",              "TEXT"),
+        ("filter_min_duration",     "INTEGER NOT NULL DEFAULT 180"),
+        ("filter_exclude_shorts",   "INTEGER NOT NULL DEFAULT 1"),
+        ("filter_exclude_live",     "INTEGER NOT NULL DEFAULT 1"),
+        ("filter_exclude_was_live", "INTEGER NOT NULL DEFAULT 1"),
+    ]:
         if col not in cols:
             conn.execute(f"ALTER TABLE subscriptions ADD COLUMN {col} {typedef}")
     conn.commit()
@@ -358,6 +369,21 @@ def _log_download(sub: dict, filename: str):
         f.write(f"{ts}\t{sub['name']}\t{basename}\n")
 
 
+def _build_match_filter(sub: dict) -> Optional[str]:
+    """Build the yt-dlp --match-filter string from per-subscription filter settings."""
+    parts = []
+    min_dur = sub.get("filter_min_duration", 180)
+    if min_dur and min_dur > 0:
+        parts.append(f"duration>{min_dur}")
+    if sub.get("filter_exclude_live", 1):
+        parts.append("!is_live")
+    if sub.get("filter_exclude_was_live", 1):
+        parts.append("!was_live")
+    if sub.get("filter_exclude_shorts", 1):
+        parts.append("original_url!*=/shorts/")
+    return " & ".join(parts) if parts else None
+
+
 def _download_video(sub: dict, video_id: str, log_path: str) -> int:
     """Download a single video by ID."""
     os.makedirs(sub["output_dir"], exist_ok=True)
@@ -371,7 +397,6 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "--download-archive",    archive_path,
         "--output",              output_tmpl,
         "--format",              fmt,
-        "--match-filter",        "duration>180 & !is_live & !was_live & original_url!*=/shorts/",
         "--merge-output-format", "mp4",
         "--paths",              f"home:{sub['output_dir']}",
         "--paths",              "temp:/tmp",
@@ -386,6 +411,10 @@ def _download_video(sub: dict, video_id: str, log_path: str) -> int:
         "--remote-components",   "ejs:github",
         "--newline",
     ]
+
+    match_filter = _build_match_filter(sub)
+    if match_filter:
+        cmd += ["--match-filter", match_filter]
 
     cookies_path = "/data/cookies.txt"
     if os.path.exists(cookies_path):
@@ -653,9 +682,7 @@ def unschedule_sub(sub_id: str):
 def startup():
     init_db()
     scheduler.start()
-    for sub in all_subs():
-        if sub["enabled"]:
-            schedule_sub(sub["id"], sub["interval_hours"], jitter=True)
+    stagger_subscriptions()
 
 
 
@@ -689,23 +716,31 @@ def shutdown():
 # ---------------------------------------------------------------------------
 
 class SubCreate(BaseModel):
-    url:            str
-    name:           Optional[str]  = None
-    output_dir:     str
-    interval_hours: float          = 6.0
-    quality:        str            = "1440"
-    backfill:       bool           = False
-    date_after:     Optional[str]  = None
+    url:                     str
+    name:                    Optional[str]  = None
+    output_dir:              str
+    interval_hours:          float          = 6.0
+    quality:                 str            = "1440"
+    backfill:                bool           = False
+    date_after:              Optional[str]  = None
+    filter_min_duration:     int            = 180
+    filter_exclude_shorts:   bool           = True
+    filter_exclude_live:     bool           = True
+    filter_exclude_was_live: bool           = True
 
 
 class SubUpdate(BaseModel):
-    url:            Optional[str]   = None
-    name:           Optional[str]   = None
-    output_dir:     Optional[str]   = None
-    interval_hours: Optional[float] = None
-    quality:        Optional[str]   = None
-    enabled:        Optional[bool]  = None
-    date_after:     Optional[str]   = None
+    url:                     Optional[str]   = None
+    name:                    Optional[str]   = None
+    output_dir:              Optional[str]   = None
+    interval_hours:          Optional[float] = None
+    quality:                 Optional[str]   = None
+    enabled:                 Optional[bool]  = None
+    date_after:              Optional[str]   = None
+    filter_min_duration:     Optional[int]   = None
+    filter_exclude_shorts:   Optional[bool]  = None
+    filter_exclude_live:     Optional[bool]  = None
+    filter_exclude_was_live: Optional[bool]  = None
 
 
 # ---------------------------------------------------------------------------
@@ -729,11 +764,15 @@ def add_subscription(body: SubCreate):
     sub_id = str(uuid.uuid4())[:8]
     conn.execute(
         """INSERT INTO subscriptions
-           (id, url, name, output_dir, interval_hours, quality, backfill, date_after, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
+           (id, url, name, output_dir, interval_hours, quality, backfill, date_after,
+            filter_min_duration, filter_exclude_shorts, filter_exclude_live, filter_exclude_was_live,
+            created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (sub_id, body.url, body.name or _handle_from_url(body.url) or body.url, body.output_dir,
-         body.interval_hours, body.quality, int(body.backfill),
-         body.date_after, datetime.now(timezone.utc).isoformat()),
+         body.interval_hours, body.quality, int(body.backfill), body.date_after,
+         body.filter_min_duration, int(body.filter_exclude_shorts),
+         int(body.filter_exclude_live), int(body.filter_exclude_was_live),
+         datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
     conn.close()
@@ -781,6 +820,9 @@ def update_subscription(sub_id: str, body: SubUpdate):
         raise HTTPException(400, "No fields to update")
     if "enabled" in updates:
         updates["enabled"] = int(updates["enabled"])
+    for bool_field in ("filter_exclude_shorts", "filter_exclude_live", "filter_exclude_was_live"):
+        if bool_field in updates:
+            updates[bool_field] = int(updates[bool_field])
     set_clause = ", ".join(f"{k}=?" for k in updates)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(f"UPDATE subscriptions SET {set_clause} WHERE id=?",
