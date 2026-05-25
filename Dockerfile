@@ -14,11 +14,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir bgutil-ytdlp-pot-provider
 
 # Clone and build the bgutil server (expected at /root/bgutil-ytdlp-pot-provider/server)
+# Pull latest before building to ensure generate_once.js is up to date
 RUN git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider \
       /root/bgutil-ytdlp-pot-provider \
-    && cd /root/bgutil-ytdlp-pot-provider/server \
+    && cd /root/bgutil-ytdlp-pot-provider \
+    && git pull \
+    && cd server \
     && npm install \
-    && npx tsc
+    && npx tsc \
+    && node build/generate_once.js --version
 
 COPY app/ .
 COPY start.sh .
