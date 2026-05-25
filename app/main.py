@@ -638,10 +638,9 @@ def run_subscription(sub_id: str, trigger: str = "scheduler"):
         conn.commit()
         conn.close()
 
+    finally:
         with open(log_path, "a") as log:
             log.write(f"Run complete. Exit code: {overall_rc}\n")
-
-    finally:
         with _running_subs_lock:
             _running_subs.discard(sub_id)
         with _cancelled_subs_lock:
