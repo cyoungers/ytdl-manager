@@ -282,14 +282,9 @@ async function refreshCookies() {
   const KBM_MACRO_UUID = 'F6F4E169-13C0-4E67-8B10-296B07F2A309';
   btn.textContent = 'Triggering…';
   btn.disabled = true;
-  try {
-    await fetch(`http://localhost:4490/action.html?macro=${KBM_MACRO_UUID}&value=1`, {mode:'no-cors'});
-    btn.textContent = '✓ Triggered';
-    setTimeout(() => { btn.textContent = 'Refresh Cookies'; btn.disabled = false; }, 4000);
-  } catch(e) {
-    btn.textContent = 'KBM unavailable';
-    setTimeout(() => { btn.textContent = 'Refresh Cookies'; btn.disabled = false; }, 3000);
-  }
+  // Use KBM URL scheme — works without needing "Allow Execute via Web" setting
+  window.location.href = `kmtrigger://macro=${KBM_MACRO_UUID}&value=1`;
+  setTimeout(() => { btn.textContent = 'Refresh Cookies'; btn.disabled = false; }, 3000);
 }
 
 async function scanMedia() {
