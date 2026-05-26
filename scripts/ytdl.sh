@@ -162,16 +162,33 @@ cmd_add() {
     [[ -n "$date_after" ]] && date_after_json="\"$date_after\""
   fi
 
+  # Video filters
+  echo
+  echo -e "  ${BOLD}Video Filters${RESET} (press Enter to accept defaults)"
+  read -rp "  Min duration seconds (0=no min) [default: 180]: " min_dur
+  min_dur=${min_dur:-180}
+  local excl_shorts_json=true excl_live_json=true excl_was_live_json=true
+  read -rp "  Exclude Shorts? [Y/n]: " excl_shorts_in
+  [[ "$excl_shorts_in" =~ ^[Nn]$ ]] && excl_shorts_json=false
+  read -rp "  Exclude live streams? [Y/n]: " excl_live_in
+  [[ "$excl_live_in" =~ ^[Nn]$ ]] && excl_live_json=false
+  read -rp "  Exclude past live/replays? [Y/n]: " excl_was_live_in
+  [[ "$excl_was_live_in" =~ ^[Nn]$ ]] && excl_was_live_json=false
+
   # Confirm
   echo
   hr
   echo -e "  ${BOLD}Summary:${RESET}"
-  printf "    %-16s %s\n" "URL:"        "$url"
-  printf "    %-16s %s\n" "Name:"       "$name"
-  printf "    %-16s %s\n" "Output dir:" "$output_dir"
-  printf "    %-16s %s\n" "Interval:"   "${interval}h"
-  printf "    %-16s %s\n" "Quality:"    "$quality"
-  [[ "$date_after_json" != "null" ]] && printf "    %-16s %s\n" "date_after:" "$date_after"
+  printf "    %-20s %s\n" "URL:"              "$url"
+  printf "    %-20s %s\n" "Name:"             "$name"
+  printf "    %-20s %s\n" "Output dir:"       "$output_dir"
+  printf "    %-20s %s\n" "Interval:"         "${interval}h"
+  printf "    %-20s %s\n" "Quality:"          "$quality"
+  [[ "$date_after_json" != "null" ]] && printf "    %-20s %s\n" "date_after:" "$date_after"
+  printf "    %-20s %s\n" "Min duration:"     "${min_dur}s"
+  printf "    %-20s %s\n" "Excl. Shorts:"     "$excl_shorts_json"
+  printf "    %-20s %s\n" "Excl. live:"       "$excl_live_json"
+  printf "    %-20s %s\n" "Excl. past live:"  "$excl_was_live_json"
   hr
   echo
   read -rp "  Add this subscription? [y/N]: " confirm
@@ -179,14 +196,22 @@ cmd_add() {
 
   local payload
   payload=$(jq -n \
-    --arg url        "$url"        \
-    --arg name       "$name"       \
-    --arg output_dir "$output_dir" \
-    --argjson interval "$interval" \
-    --arg quality    "$quality"    \
-    --argjson date_after "$date_after_json" \
+    --arg url              "$url"              \
+    --arg name             "$name"             \
+    --arg output_dir       "$output_dir"       \
+    --argjson interval     "$interval"         \
+    --arg quality          "$quality"          \
+    --argjson date_after   "$date_after_json"  \
+    --argjson min_dur      "$min_dur"          \
+    --argjson excl_shorts  "$excl_shorts_json" \
+    --argjson excl_live    "$excl_live_json"   \
+    --argjson excl_was_live "$excl_was_live_json" \
     '{url:$url, name:$name, output_dir:$output_dir,
-      interval_hours:$interval, quality:$quality, date_after:$date_after}')
+      interval_hours:$interval, quality:$quality, date_after:$date_after,
+      filter_min_duration:$min_dur,
+      filter_exclude_shorts:$excl_shorts,
+      filter_exclude_live:$excl_live,
+      filter_exclude_was_live:$excl_was_live}')
 
   local resp http_code
   resp=$(curl -s -w "\n%{http_code}" -X POST "$API/subscriptions" \
@@ -364,11 +389,16 @@ cmd_update() {
   local sub
   sub=$(api "/subscriptions/$SUB_ID") || { err "Failed to fetch subscription"; pause; return; }
   local cur_url cur_name cur_interval cur_quality cur_date_after
-  cur_url=$(echo "$sub"        | jq -r '.url')
-  cur_name=$(echo "$sub"       | jq -r '.name')
-  cur_interval=$(echo "$sub"   | jq -r '.interval_hours')
-  cur_quality=$(echo "$sub"    | jq -r '.quality')
-  cur_date_after=$(echo "$sub" | jq -r '.date_after // "none"')
+  local cur_min_dur cur_excl_shorts cur_excl_live cur_excl_was_live
+  cur_url=$(echo "$sub"           | jq -r '.url')
+  cur_name=$(echo "$sub"          | jq -r '.name')
+  cur_interval=$(echo "$sub"      | jq -r '.interval_hours')
+  cur_quality=$(echo "$sub"       | jq -r '.quality')
+  cur_date_after=$(echo "$sub"    | jq -r '.date_after // "none"')
+  cur_min_dur=$(echo "$sub"       | jq -r '.filter_min_duration // 180')
+  cur_excl_shorts=$(echo "$sub"   | jq -r 'if .filter_exclude_shorts then "true" else "false" end')
+  cur_excl_live=$(echo "$sub"     | jq -r 'if .filter_exclude_live then "true" else "false" end')
+  cur_excl_was_live=$(echo "$sub" | jq -r 'if .filter_exclude_was_live then "true" else "false" end')
   echo
   echo -e "  Updating ${BOLD}$SUB_NAME${RESET} (leave blank to keep current value)"
   echo
@@ -387,13 +417,34 @@ cmd_update() {
   echo    "  Leave blank to keep current value. Enter 'clear' to remove the filter."
   read -rp "  date_after  [${cur_date_after}]: " date_after
   echo
+  echo -e "  ${BOLD}Video Filters${RESET} (leave blank to keep current value)"
+  read -rp "  Min duration seconds (0=no min)    [${cur_min_dur}]: " min_dur
+  read -rp "  Exclude Shorts (true/false)        [${cur_excl_shorts}]: " excl_shorts
+  read -rp "  Exclude live streams (true/false)  [${cur_excl_live}]: " excl_live
+  read -rp "  Exclude past live/replays (t/f)    [${cur_excl_was_live}]: " excl_was_live
+  echo
 
   local payload="{}"
-  [[ -n "$url"        ]] && payload=$(echo "$payload" | jq --arg v "$url" '.url=$v')
-  [[ -n "$name"       ]] && payload=$(echo "$payload" | jq --arg v "$name" '.name=$v')
-  [[ -n "$interval"   ]] && payload=$(echo "$payload" | jq --argjson v "$interval" '.interval_hours=$v')
-  [[ -n "$quality"    ]] && payload=$(echo "$payload" | jq --arg v "$quality" '.quality=$v')
-  [[ -n "$date_after" ]] && payload=$(echo "$payload" | jq --arg v "$date_after" '.date_after=$v')
+  [[ -n "$url"          ]] && payload=$(echo "$payload" | jq --arg v "$url" '.url=$v')
+  [[ -n "$name"         ]] && payload=$(echo "$payload" | jq --arg v "$name" '.name=$v')
+  [[ -n "$interval"     ]] && payload=$(echo "$payload" | jq --argjson v "$interval" '.interval_hours=$v')
+  [[ -n "$quality"      ]] && payload=$(echo "$payload" | jq --arg v "$quality" '.quality=$v')
+  [[ -n "$date_after"   ]] && payload=$(echo "$payload" | jq --arg v "$date_after" '.date_after=$v')
+  if [[ -n "$min_dur" ]]; then
+    payload=$(echo "$payload" | jq --argjson v "$min_dur" '.filter_min_duration=$v')
+  fi
+  if [[ -n "$excl_shorts" ]]; then
+    [[ "$excl_shorts" =~ ^[Ff] ]] && excl_shorts="false" || excl_shorts="true"
+    payload=$(echo "$payload" | jq --argjson v "$excl_shorts" '.filter_exclude_shorts=$v')
+  fi
+  if [[ -n "$excl_live" ]]; then
+    [[ "$excl_live" =~ ^[Ff] ]] && excl_live="false" || excl_live="true"
+    payload=$(echo "$payload" | jq --argjson v "$excl_live" '.filter_exclude_live=$v')
+  fi
+  if [[ -n "$excl_was_live" ]]; then
+    [[ "$excl_was_live" =~ ^[Ff] ]] && excl_was_live="false" || excl_was_live="true"
+    payload=$(echo "$payload" | jq --argjson v "$excl_was_live" '.filter_exclude_was_live=$v')
+  fi
 
   if [[ "$payload" == "{}" ]]; then warn "Nothing to update."; pause; return; fi
 
@@ -514,18 +565,10 @@ cmd_downloads() {
 
 cmd_cookies_auto() {
   hdr "Refresh YouTube Cookies (Automated)"
-  echo "  This script must be run on your Mac — it requires Chrome,"
-  echo "  AppleScript, and cliclick which are not available on this server."
+  echo "  Triggering Keyboard Maestro macro on your Mac..."
   echo
-  echo -e "  Run this on your Mac:"
-  echo
-  echo -e "    ${BOLD}~/ai/refresh-cookies-auto.sh${RESET}"
-  echo
-  echo "  The script will:"
-  echo "    - Open Chrome incognito and log into YouTube via passkey"
-  echo "    - Export cookies using the 'Get cookies.txt LOCALLY' extension"
-  echo "    - SCP the cookie file to this server automatically"
-  echo "    - Install it into the container and verify it works"
+  osascript -e 'tell application "Keyboard Maestro Engine" to do script "F6F4E169-13C0-4E67-8B10-296B07F2A309"'
+  ok "Macro triggered — watch your Mac for the Chrome cookie export flow."
   pause
 }
 
