@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Status — ytdl-manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0f172a; color: #f1f5f9; }
+    .log-content::-webkit-scrollbar { width: 6px; }
+    .log-content::-webkit-scrollbar-track { background: #1e293b; }
+    .log-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spinning { display: inline-block; animation: spin 1.2s linear infinite; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-4 sticky top-0 z-10">
+  <a href="/" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">← Dashboard</a>
+  <span class="text-sm font-semibold text-slate-100">Job Status</span>
+  <div class="flex-1"></div>
+  <span id="last-refresh" class="text-xs text-slate-400"></span>
+  <button onclick="doRefresh()"
+    class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+    ⟳ Refresh
+  </button>
+  <button onclick="staggerSchedules()" id="stagger-btn"
+    class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+    Stagger Schedules
+  </button>
+</header>
+<nav class="bg-slate-800 border-b border-slate-700 px-6 flex gap-0">
+  <a href="/" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Dashboard</a>
+  <a href="/jobs-page" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors" style="color:#7dd3fc; border-color:#3b82f6;">Job Status</a>
+  <a href="/container" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Container</a>
+</nav>
+
+<div class="px-6 py-5 flex flex-col gap-5">
+
+  <!-- Recent / running jobs — full width -->
+  <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
+      <h2 class="font-semibold text-slate-100 text-sm">Recent / Running Jobs</h2>
+      <div class="flex gap-1.5">
+        <button onclick="setJobFilter('all')" id="jf-all"
+          class="jf-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-600 text-white">All</button>
+        <button onclick="setJobFilter('running')" id="jf-running"
+          class="jf-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-700 text-slate-400 hover:bg-slate-600">Running</button>
+        <button onclick="setJobFilter('completed')" id="jf-completed"
+          class="jf-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-700 text-slate-400 hover:bg-slate-600">Completed</button>
+        <button onclick="setJobFilter('failed')" id="jf-failed"
+          class="jf-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-700 text-slate-400 hover:bg-slate-600">Failed</button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700 text-slate-400 text-xs uppercase tracking-wide">
+            <th class="text-left px-4 py-2.5 font-medium">Subscription</th>
+            <th class="text-left px-4 py-2.5 font-medium">Trigger</th>
+            <th class="text-left px-4 py-2.5 font-medium">Status</th>
+            <th class="text-center px-3 py-2.5 font-medium">Found</th>
+            <th class="text-center px-3 py-2.5 font-medium">Done</th>
+            <th class="text-center px-3 py-2.5 font-medium">Fail</th>
+            <th class="text-left px-4 py-2.5 font-medium">Started</th>
+          </tr>
+        </thead>
+        <tbody id="jobs-tbody">
+          <tr><td colspan="8" class="px-4 py-10 text-center text-slate-500">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Log + upcoming side by side -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+    <!-- Log viewer -->
+    <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden flex flex-col" style="min-height:200px">
+      <div class="px-4 py-3 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+        <span class="font-mono text-sm font-semibold text-slate-200 truncate" id="log-title">Log</span>
+        <button onclick="closeLog()" id="log-close-btn" style="display:none"
+          class="text-slate-400 hover:text-white text-lg leading-none px-1">&#10005;</button>
+      </div>
+      <pre id="log-content"
+        class="log-content font-mono text-xs text-slate-400 p-4 overflow-auto flex-1"
+        style="min-height:160px; max-height:340px; white-space:pre-wrap; word-break:break-all;">Select a job to view its log.</pre>
+    </div>
+
+    <!-- Upcoming scheduled runs -->
+    <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-700">
+        <h2 class="font-semibold text-slate-100 text-sm">Upcoming Scheduled Runs</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-700 text-slate-400 text-xs uppercase tracking-wide">
+              <th class="text-left px-4 py-2.5 font-medium">Subscription</th>
+              <th class="text-center px-3 py-2.5 font-medium">Every</th>
+              <th class="text-left px-4 py-2.5 font-medium">Next Run</th>
+            </tr>
+          </thead>
+          <tbody id="sched-tbody">
+            <tr><td colspan="3" class="px-4 py-6 text-center text-slate-500">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- end bottom grid -->
+</div><!-- end page flex -->
+
+{% raw %}
+<script>
+const state = { jobs: [], jobFilter: 'all', logSubId: null };
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmt(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr.replace(' UTC','Z').replace(' ','T'));
+  if (isNaN(d)) return isoStr;
+  return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+}
+
+function timeAgo(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr.replace(' UTC','Z').replace(' ','T'));
+  if (isNaN(d)) return isoStr;
+  const sec = Math.floor((Date.now() - d) / 1000);
+  if (sec < 60)    return `${sec}s ago`;
+  if (sec < 3600)  return `${Math.floor(sec/60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec/3600)}h ago`;
+  return `${Math.floor(sec/86400)}d ago`;
+}
+
+function jobBadge(status) {
+  const map = {
+    running:   'bg-blue-900/60 text-blue-300 border-blue-700',
+    completed: 'bg-green-900/60 text-green-300 border-green-700',
+    failed:    'bg-red-900/60 text-red-300 border-red-700',
+  };
+  const spin = status === 'running' ? '<span class="spinning mr-1">&#8635;</span>' : '';
+  return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${map[status]||''}">${spin}${esc(status)}</span>`;
+}
+
+function setJobFilter(f) {
+  state.jobFilter = f;
+  document.querySelectorAll('.jf-btn').forEach(b => {
+    b.classList.remove('bg-slate-600','text-white');
+    b.classList.add('bg-slate-700','text-slate-400');
+  });
+  const btn = document.getElementById(`jf-${f}`);
+  if (btn) { btn.classList.remove('bg-slate-700','text-slate-400'); btn.classList.add('bg-slate-600','text-white'); }
+  renderJobs();
+}
+
+function renderJobs() {
+  const tbody = document.getElementById('jobs-tbody');
+  const f = state.jobFilter;
+  const visible = state.jobs.filter(j => f === 'all' || j.status === f);
+  if (!visible.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-10 text-center text-slate-500">No jobs${f !== 'all' ? ' matching filter' : ' yet — check back after the first scheduled or manual run'}.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = visible.map(j => `
+    <tr class="border-b border-slate-700/40 hover:bg-slate-700/25 transition-colors cursor-pointer ${state.logSubId === j.sub_id ? 'bg-slate-700/40' : ''}"
+        onclick="viewLog('${esc(j.sub_id)}','${esc(j.sub_name)}')">
+      <td class="px-4 py-2.5 font-medium text-slate-100 max-w-[10rem] truncate" title="${esc(j.sub_name)}">${esc(j.sub_name)}</td>
+      <td class="px-4 py-2.5 text-xs text-slate-400">${esc(j.trigger)}</td>
+      <td class="px-4 py-2.5">${jobBadge(j.status)}</td>
+      <td class="px-3 py-2.5 text-center text-sm text-slate-300">${j.videos_found ?? '—'}</td>
+      <td class="px-3 py-2.5 text-center text-sm ${j.videos_done > 0 ? 'text-green-400 font-semibold' : 'text-slate-500'}">${j.videos_done ?? '—'}</td>
+      <td class="px-3 py-2.5 text-center text-sm ${j.videos_failed > 0 ? 'text-red-400 font-semibold' : 'text-slate-500'}">${j.videos_failed ?? '—'}</td>
+      <td class="px-4 py-2.5 text-xs text-slate-400">${timeAgo(j.started_at)}</td>
+    </tr>`).join('');
+}
+
+function renderScheduled(scheduled) {
+  const tbody = document.getElementById('sched-tbody');
+  if (!scheduled.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="px-4 py-6 text-center text-slate-500">No scheduled jobs.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = scheduled.map(s => `
+    <tr class="border-b border-slate-700/40">
+      <td class="px-4 py-2 font-medium text-slate-100 text-sm">${esc(s.sub_name)}</td>
+      <td class="px-3 py-2 text-center text-xs text-slate-400">${s.interval_hours ? s.interval_hours+'h' : '—'}</td>
+      <td class="px-4 py-2 text-xs text-sky-400">${fmt(s.next_run)}</td>
+    </tr>`).join('');
+}
+
+async function viewLog(subId, subName) {
+  state.logSubId = subId;
+  document.getElementById('log-title').textContent = subName;
+  document.getElementById('log-close-btn').style.display = '';
+  const pre = document.getElementById('log-content');
+  pre.textContent = 'Loading…';
+  try {
+    const data = await fetch(`/api/log/${subId}`).then(r => r.json());
+    const content = Array.isArray(data) ? data.join('\n') : String(data);
+    pre.textContent = content || '(empty log)';
+    pre.scrollTop = pre.scrollHeight;
+  } catch(e) {
+    pre.textContent = 'Error fetching log.';
+  }
+}
+
+function closeLog() {
+  state.logSubId = null;
+  document.getElementById('log-title').textContent = 'Log';
+  document.getElementById('log-content').textContent = 'Select a job to view its log.';
+  document.getElementById('log-close-btn').style.display = 'none';
+}
+
+async function staggerSchedules() {
+  const btn = document.getElementById('stagger-btn');
+  btn.textContent = 'Staggering…';
+  btn.disabled = true;
+  try {
+    const data = await fetch('/api/stagger', {method:'POST'}).then(r => r.json());
+    btn.textContent = `Staggered ${data.staggered ?? '?'}`;
+  } catch(e) {
+    btn.textContent = 'Failed';
+  }
+  setTimeout(() => { btn.textContent = 'Stagger Schedules'; btn.disabled = false; }, 3000);
+}
+
+async function doRefresh() {
+  try {
+    const [data, subs] = await Promise.all([
+      fetch('/jobs').then(r => r.json()),
+      fetch('/api/subscriptions').then(r => r.json()),
+    ]);
+    // Build interval lookup from subs
+    const intervalMap = {};
+    (subs || []).forEach(s => { intervalMap[s.id] = s.interval_hours; });
+    state.jobs = data.jobs || [];
+    renderJobs();
+    const scheduled = (data.scheduled || []).map(s => ({
+      ...s, interval_hours: intervalMap[s.sub_id] ?? null
+    }));
+    renderScheduled(scheduled);
+    const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    document.getElementById('last-refresh').textContent = `Updated ${now}`;
+    // Re-fetch log if one is open
+    if (state.logSubId) {
+      const logData = await fetch(`/api/log/${state.logSubId}`).then(r => r.json()).catch(() => null);
+      if (logData) {
+        const pre = document.getElementById('log-content');
+        const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+        pre.textContent = Array.isArray(logData) ? logData.join('\n') : String(logData);
+        if (atBottom) pre.scrollTop = pre.scrollHeight;
+      }
+    }
+  } catch(e) {
+    document.getElementById('last-refresh').textContent = 'Refresh failed';
+  }
+}
+
+// Auto-refresh: fast when jobs are running, slow otherwise
+let _timer = null;
+function scheduleRefresh() {
+  if (_timer) clearTimeout(_timer);
+  const anyRunning = state.jobs.some(j => j.status === 'running');
+  _timer = setTimeout(async () => { await doRefresh(); scheduleRefresh(); }, anyRunning ? 5000 : 15000);
+}
+
+doRefresh().then(scheduleRefresh);
+</script>
+{% endraw %}
+</body>
+</html>

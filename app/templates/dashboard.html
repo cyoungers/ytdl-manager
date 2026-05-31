@@ -17,9 +17,10 @@
 <body class="min-h-screen">
 
 <!-- Header -->
-<header class="bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
   <div class="flex items-center gap-3">
-    <span class="text-xl font-bold text-slate-100">ytdl-manager</span>
+    <span class="text-lg font-bold text-slate-100">ytdl-manager</span>
+    <span class="text-xs text-slate-600">v2</span>
     <span id="ytdlp-version" class="text-xs text-slate-500 font-mono"></span>
     <button id="ytdlp-update-btn" onclick="updateYtdlp()" style="display:none"
       class="px-2 py-0.5 text-xs bg-yellow-600 hover:bg-yellow-500 rounded font-medium transition-colors">
@@ -27,24 +28,22 @@
     </button>
   </div>
   <div class="flex items-center gap-3">
-    <span id="last-refresh" class="text-xs text-slate-500"></span>
-    <a href="/help" target="_blank" class="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 rounded-lg font-medium transition-colors">
+    <span id="last-refresh" class="text-xs text-slate-400"></span>
+    <a href="/help" target="_blank"
+      class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
       Help
     </a>
-    <button onclick="refreshCookies()" id="cookies-btn" class="px-3 py-1.5 text-sm bg-green-700 hover:bg-green-600 rounded-lg font-medium transition-colors">
-      Refresh Cookies
-    </button>
-    <button onclick="scanMedia()" id="scan-media-btn" class="px-3 py-1.5 text-sm bg-purple-700 hover:bg-purple-600 rounded-lg font-medium transition-colors">
-      Scan Media
-    </button>
-    <button onclick="checkAll()" class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded-lg font-medium transition-colors">
-      Check All
-    </button>
-    <button onclick="doRefreshAndSchedule()" class="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 rounded-lg font-medium transition-colors">
+    <button onclick="doRefreshAndSchedule()"
+      class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
       &#8635; Refresh
     </button>
   </div>
 </header>
+<nav class="bg-slate-800 border-b border-slate-700 px-6 flex gap-0">
+  <a href="/" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors" style="color:#7dd3fc; border-color:#3b82f6;">Dashboard</a>
+  <a href="/jobs-page" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Job Status</a>
+  <a href="/container" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Container</a>
+</nav>
 
 <!-- Stat bar -->
 <div class="px-6 pt-5 pb-3 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -73,7 +72,6 @@
   <!-- Subscriptions table (2/3) -->
   <div class="lg:col-span-2 bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
     <div class="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
-      <h2 class="font-semibold text-slate-100">Subscriptions</h2>
       <div class="flex gap-1.5">
         <button onclick="setFilter('all')" id="filter-all"
           class="filter-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-600 text-white">All</button>
@@ -81,6 +79,18 @@
           class="filter-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-700 text-slate-400 hover:bg-slate-600">Errors</button>
         <button onclick="setFilter('running')" id="filter-running"
           class="filter-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-700 text-slate-400 hover:bg-slate-600">Downloading</button>
+        <button onclick="setFilter('paused')" id="filter-paused"
+          class="filter-btn px-3 py-1 text-xs rounded-full font-medium transition-colors bg-slate-700 text-slate-400 hover:bg-slate-600">Paused</button>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="checkAll()"
+          class="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded font-medium transition-colors">
+          Check All
+        </button>
+        <a href="/add"
+          class="px-3 py-1 text-xs bg-violet-700 hover:bg-violet-600 rounded font-medium transition-colors">
+          + Add
+        </a>
       </div>
     </div>
     <div class="overflow-x-auto">
@@ -93,7 +103,7 @@
             <th class="text-center px-3 py-2.5 font-medium">Every</th>
             <th class="text-left px-4 py-2.5 font-medium">Last Checked</th>
             <th class="text-center px-3 py-2.5 font-medium">DL Today</th>
-            <th class="px-4 py-2.5"></th>
+            <th class="text-right px-4 py-2.5 font-medium">Actions</th>
           </tr>
         </thead>
         <tbody id="subs-tbody">
@@ -206,7 +216,8 @@ function applyFilter() {
   const visible = state.subs.filter(s =>
     f === 'all'     ? true :
     f === 'error'   ? s.status === 'error' :
-    f === 'running' ? s.status === 'running' : true
+    f === 'running' ? s.status === 'running' :
+    f === 'paused'  ? s.enabled === false : true
   );
   if (!visible.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">No subscriptions match.</td></tr>`;
@@ -226,10 +237,25 @@ function applyFilter() {
       <td class="px-4 py-2.5 text-xs text-slate-400">${timeAgo(s.last_checked_at)}</td>
       <td class="px-3 py-2.5 text-center text-sm font-semibold ${s.downloads_today > 0 ? 'text-green-400' : 'text-slate-600'}">${s.downloads_today}</td>
       <td class="px-4 py-2.5 text-right">
-        <button onclick="checkSub(event,'${esc(s.id)}')"
-          class="px-2.5 py-1 text-xs bg-slate-700 hover:bg-blue-600 rounded font-medium transition-colors whitespace-nowrap">
-          Check
-        </button>
+        <div class="flex gap-1.5 justify-end">
+          <button onclick="checkSub(event,'${esc(s.id)}')"
+            class="px-2 py-1 text-xs bg-slate-700 hover:bg-blue-600 rounded font-medium transition-colors">
+            Check
+          </button>
+          <a href="/edit/${esc(s.id)}"
+            onclick="event.stopPropagation()"
+            class="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-500 rounded font-medium transition-colors">
+            Edit
+          </a>
+          <button onclick="togglePause(event,'${esc(s.id)}',${s.enabled})"
+            class="px-2 py-1 text-xs rounded font-medium transition-colors ${s.enabled ? 'bg-slate-700 hover:bg-amber-700' : 'bg-amber-800 hover:bg-green-700 text-amber-200'}">
+            ${s.enabled ? '⏸' : '▶'}
+          </button>
+          <button onclick="deleteSub(event,'${esc(s.id)}','${esc(s.name)}')"
+            class="px-2 py-1 text-xs bg-slate-700 hover:bg-red-700 rounded font-medium transition-colors">
+            Del
+          </button>
+        </div>
       </td>
     </tr>`).join('');
 }
@@ -275,6 +301,25 @@ async function checkSub(event, id) {
   await api.check(id).catch(() => {});
   setTimeout(doRefresh, 800);
   setTimeout(() => { btn.textContent = 'Check'; btn.disabled = false; }, 2000);
+}
+
+async function togglePause(event, id, enabled) {
+  event.stopPropagation();
+  const btn = event.target;
+  btn.disabled = true;
+  await fetch(`/subscriptions/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled: !enabled}),
+  }).catch(() => {});
+  setTimeout(doRefresh, 400);
+}
+
+async function deleteSub(event, id, name) {
+  event.stopPropagation();
+  if (!confirm(`Delete subscription "${name}"?\n\nDownloaded files are kept.`)) return;
+  await fetch(`/subscriptions/${id}`, {method: 'DELETE'}).catch(() => {});
+  setTimeout(doRefresh, 400);
 }
 
 async function refreshCookies() {

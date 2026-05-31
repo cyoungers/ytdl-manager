@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit {{ sub.name }} — ytdl-manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>body { background-color: #0f172a; color: #f1f5f9; }</style>
+</head>
+<body class="min-h-screen">
+
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-4 sticky top-0 z-10">
+  <a href="/" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">← Dashboard</a>
+  <span class="text-sm font-semibold text-slate-100">Edit — {{ sub.name }}</span>
+  <div class="flex-1"></div>
+  <a href="/add/help" target="_blank"
+    class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+    Help
+  </a>
+</header>
+
+<div class="max-w-2xl mx-auto px-6 py-8">
+  <div id="msg" class="hidden mb-4 px-4 py-3 rounded text-sm font-medium"></div>
+
+  <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+    <form id="edit-form" class="divide-y divide-slate-700">
+
+      <!-- Source -->
+      <div class="px-6 py-4">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Source</h2>
+        <div class="grid gap-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">URL</label>
+            <input id="url" type="text" value="{{ sub.url }}"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Name</label>
+              <input id="name" type="text" value="{{ sub.name }}"
+                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Output directory</label>
+              <input id="output_dir" type="text" value="{{ sub.output_dir }}"
+                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Schedule & Quality -->
+      <div class="px-6 py-4">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Schedule &amp; Quality</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Interval (hours)</label>
+            <input id="interval_hours" type="number" value="{{ sub.interval_hours }}" min="1" step="1"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Quality</label>
+            <select id="quality"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+              {% for q in ['1440', '1080', '720', '480', 'best'] %}
+              <option value="{{ q }}" {% if sub.quality == q %}selected{% endif %}>{{ q }}{% if q != 'best' %}p{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="px-6 py-4">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Filters</h2>
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">date_after (playlists only)</label>
+            <input id="date_after" type="text" value="{{ sub.date_after or '' }}"
+              placeholder="today-30days  or  20250101"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Min duration (seconds)</label>
+            <input id="filter_min_duration" type="number" value="{{ sub.filter_min_duration or 180 }}" min="0"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+          </div>
+        </div>
+        <div class="flex gap-6">
+          <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+            <input id="filter_exclude_shorts" type="checkbox" class="w-4 h-4 accent-blue-500"
+              {% if sub.filter_exclude_shorts %}checked{% endif %}>
+            Exclude Shorts
+          </label>
+          <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+            <input id="filter_exclude_live" type="checkbox" class="w-4 h-4 accent-blue-500"
+              {% if sub.filter_exclude_live %}checked{% endif %}>
+            Exclude Live
+          </label>
+          <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+            <input id="filter_exclude_was_live" type="checkbox" class="w-4 h-4 accent-blue-500"
+              {% if sub.filter_exclude_was_live %}checked{% endif %}>
+            Exclude Past Live
+          </label>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 flex justify-end gap-3">
+        <a href="/" class="px-4 py-2 text-sm bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+          Cancel
+        </a>
+        <button type="submit" id="save-btn"
+          class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded font-medium transition-colors">
+          Save
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+function showMsg(text, ok) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'mb-4 px-4 py-3 rounded text-sm font-medium ' +
+    (ok ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200');
+}
+
+document.getElementById('edit-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('save-btn');
+  btn.textContent = 'Saving…';
+  btn.disabled = true;
+
+  const body = {};
+  const url      = document.getElementById('url').value.trim();
+  const name     = document.getElementById('name').value.trim();
+  const dir      = document.getElementById('output_dir').value.trim();
+  const interval = parseFloat(document.getElementById('interval_hours').value);
+  const quality  = document.getElementById('quality').value;
+  const minDur   = parseInt(document.getElementById('filter_min_duration').value);
+  const dateAfter = document.getElementById('date_after').value.trim();
+
+  if (url)      body.url            = url;
+  if (name)     body.name           = name;
+  if (dir)      body.output_dir     = dir;
+  if (interval) body.interval_hours = interval;
+  if (quality)  body.quality        = quality;
+  body.filter_min_duration     = minDur;
+  body.filter_exclude_shorts   = document.getElementById('filter_exclude_shorts').checked;
+  body.filter_exclude_live     = document.getElementById('filter_exclude_live').checked;
+  body.filter_exclude_was_live = document.getElementById('filter_exclude_was_live').checked;
+  body.date_after = dateAfter || null;
+
+  try {
+    const resp = await fetch('/subscriptions/{{ sub.id }}', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showMsg('Error: ' + (data.detail || resp.status), false);
+    } else {
+      showMsg('Saved.', true);
+      setTimeout(() => { window.location.href = '/'; }, 1000);
+    }
+  } catch (err) {
+    showMsg('Request failed: ' + err, false);
+  }
+
+  btn.textContent = 'Save';
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

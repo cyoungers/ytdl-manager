@@ -977,10 +977,69 @@ def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
 
 
+@app.get("/container")
+def container_page(request: Request):
+    return templates.TemplateResponse("container.html", {"request": request})
+
+@app.get("/jobs-page")
+def jobs_page(request: Request):
+    return templates.TemplateResponse("jobs.html", {"request": request})
+
+@app.get("/add")
+def add_page(request: Request):
+    return templates.TemplateResponse("add.html", {"request": request})
+
+@app.get("/edit/{sub_id}")
+def edit_page(sub_id: str, request: Request):
+    sub = get_sub(sub_id)
+    if not sub:
+        raise HTTPException(404, "Subscription not found")
+    sub["enabled"]  = bool(sub["enabled"])
+    sub["backfill"] = bool(sub.get("backfill", False))
+    return templates.TemplateResponse("edit.html", {"request": request, "sub": sub})
+
+@app.get("/add/help")
+def add_help_page(request: Request):
+    return templates.TemplateResponse("add_help.html", {"request": request})
+
 @app.get("/help")
 def help_page(request: Request):
     return templates.TemplateResponse("help.html", {"request": request})
 
+
+@app.get("/api/container-logs")
+def api_container_logs(lines: int = 100):
+    """Return last N lines from the downloads log as a proxy for container activity."""
+    output = []
+    try:
+        if os.path.exists(DOWNLOADS_LOG):
+            result = subprocess.run(
+                ["tail", f"-{lines}", DOWNLOADS_LOG],
+                capture_output=True, text=True, timeout=5
+            )
+            output = result.stdout.splitlines()
+    except Exception as e:
+        output = [f"(error reading log: {e})"]
+    if not output:
+        output = ["(no activity logged yet)"]
+    return {"lines": output}
+
+@app.get("/api/cookies-info")
+def api_cookies_info():
+    """Return basic info about the cookies file."""
+    cookies_path = "/data/cookies.txt"
+    if not os.path.exists(cookies_path):
+        return {"exists": False}
+    stat = os.stat(cookies_path)
+    import datetime as dt
+    mtime = dt.datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+    lines = 0
+    try:
+        with open(cookies_path) as f:
+            lines = sum(1 for l in f if not l.startswith('#') and l.strip())
+    except Exception:
+        pass
+    return {"exists": True, "modified_at": mtime, "cookie_count": lines}
 
 @app.get("/api/status")
 def api_status():

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subscription field reference — ytdl-manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0f172a; color: #f1f5f9; }
+    code { background-color: #1e293b; border: 1px solid #334155; border-radius: 4px; padding: 1px 6px; font-size: 0.8rem; font-family: monospace; color: #a3e635; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-4 sticky top-0 z-10">
+  <a href="javascript:window.close()" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">← Close</a>
+  <span class="text-sm font-semibold text-slate-100">Subscription field reference</span>
+</header>
+
+<div class="max-w-2xl mx-auto px-6 py-8 space-y-10">
+
+  <!-- Source -->
+  <section>
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5 pb-2 border-b border-slate-700">Source</h2>
+    <div class="space-y-6">
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">URL</div>
+        <p class="text-sm text-slate-300 leading-relaxed">The YouTube channel or playlist to subscribe to. Three forms are accepted:</p>
+        <div class="mt-2 space-y-1">
+          <div><code>https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxxxx</code></div>
+          <div><code>https://www.youtube.com/@channelhandle</code></div>
+          <div><code>https://www.youtube.com/playlist?list=PLxxxxxxxxxx</code></div>
+        </div>
+        <p class="mt-2 text-sm text-slate-400 leading-relaxed">Channels are checked via RSS (15 most recent videos). Playlists are checked via <code>--flat-playlist</code> and support <code>date_after</code> filtering.</p>
+      </div>
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">Name</div>
+        <p class="text-sm text-slate-300 leading-relaxed">Display label used in the UI, logs, and archive filenames. Keep it short with no slashes or special characters.</p>
+        <p class="text-xs text-slate-500 mt-1">Default: derived from the URL.</p>
+      </div>
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">Output directory</div>
+        <p class="text-sm text-slate-300 leading-relaxed">Where downloaded files are written inside the container. Must start with <code>/downloads/</code> — the prefix is added automatically if omitted.</p>
+        <div class="mt-2"><code>/downloads/ngslot</code></div>
+        <p class="text-xs text-slate-500 mt-1">Default: <code>/downloads/&lt;name&gt;</code></p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Schedule & Quality -->
+  <section>
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5 pb-2 border-b border-slate-700">Schedule &amp; Quality</h2>
+    <div class="space-y-6">
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">Interval (hours)</div>
+        <p class="text-sm text-slate-300 leading-relaxed">How often the subscription is checked for new videos. Use <code>1</code> for active channels; <code>6</code> or <code>24</code> for slower ones.</p>
+        <p class="text-sm text-slate-400 mt-1 leading-relaxed">After saving, run <strong class="text-slate-200">Stagger Schedules</strong> from the Job Status tab so all subs in the same interval group don't fire simultaneously.</p>
+        <p class="text-xs text-slate-500 mt-1">Default: 6</p>
+      </div>
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">Quality</div>
+        <p class="text-sm text-slate-300 leading-relaxed mb-3">Maximum video resolution. yt-dlp picks the best available format at or below this height, preferring MP4+M4A.</p>
+        <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+          <code>1440</code><span class="text-slate-400 self-center">2K — recommended for most channels</span>
+          <code>1080</code><span class="text-slate-400 self-center">1080p HD</span>
+          <code>720</code> <span class="text-slate-400 self-center">720p — smaller files</span>
+          <code>480</code> <span class="text-slate-400 self-center">SD — audio-primary channels</span>
+          <code>best</code><span class="text-slate-400 self-center">uncapped — use with caution on 4K channels</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">Default: 1440</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Filters -->
+  <section>
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5 pb-2 border-b border-slate-700">Filters</h2>
+    <div class="space-y-6">
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">date_after</div>
+        <p class="text-sm text-slate-300 leading-relaxed">Playlists only — skip videos uploaded before this date. Has no effect on channel (RSS) subscriptions. Accepts absolute dates or relative expressions:</p>
+        <div class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+          <code>20250101</code>     <span class="text-slate-400 self-center">Jan 1 2025 and later</span>
+          <code>today-7days</code>  <span class="text-slate-400 self-center">last 7 days</span>
+          <code>today-30days</code> <span class="text-slate-400 self-center">last 30 days</span>
+          <code>today-6months</code><span class="text-slate-400 self-center">last 6 months</span>
+          <code>today-1year</code>  <span class="text-slate-400 self-center">last year</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">Default: none (download entire playlist history).</p>
+      </div>
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">Min duration (seconds)</div>
+        <p class="text-sm text-slate-300 leading-relaxed">Skip videos shorter than this many seconds. Useful for filtering out clips and highlight reels on channels that mix long and short content. Set to <code>0</code> to disable.</p>
+        <p class="text-xs text-slate-500 mt-1">Default: 180 (3 minutes)</p>
+      </div>
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">Exclude Shorts</div>
+        <p class="text-sm text-slate-300 leading-relaxed">Skip YouTube Shorts — vertical short-form videos detected via URL pattern <code>/shorts/</code>. Leave on for most subscriptions.</p>
+        <p class="text-xs text-slate-500 mt-1">Default: on</p>
+      </div>
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">Exclude Live</div>
+        <p class="text-sm text-slate-300 leading-relaxed">Skip videos currently airing as a live stream — these can't be downloaded in final form yet. Scheduled premieres ("Premieres in…") are also skipped.</p>
+        <p class="text-xs text-slate-500 mt-1">Default: on</p>
+      </div>
+
+      <div>
+        <div class="font-mono text-sm text-sky-400 mb-1">Exclude Past Live</div>
+        <p class="text-sm text-slate-300 leading-relaxed">Skip videos that were live streams but have since ended and been archived as replays. Turn off only if you specifically want live stream replays from a channel.</p>
+        <p class="text-xs text-slate-500 mt-1">Default: on</p>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

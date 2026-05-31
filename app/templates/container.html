@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Container — ytdl-manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0f172a; color: #f1f5f9; }
+    .log-content::-webkit-scrollbar { width: 6px; }
+    .log-content::-webkit-scrollbar-track { background: #1e293b; }
+    .log-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen" style="display:flex; flex-direction:column; height:100vh; overflow:hidden;">
+
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-4 sticky top-0 z-10">
+  <a href="/" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">← Dashboard</a>
+  <span class="text-sm font-semibold text-slate-100">Container</span>
+  <div class="flex-1"></div>
+  <span id="last-refresh" class="text-xs text-slate-400"></span>
+  <button onclick="doRefresh()"
+    class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+    ⟳ Refresh
+  </button>
+</header>
+<nav class="bg-slate-800 border-b border-slate-700 px-6 flex gap-0">
+  <a href="/" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Dashboard</a>
+  <a href="/jobs-page" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Job Status</a>
+  <a href="/container" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors" style="color:#7dd3fc; border-color:#3b82f6;">Container</a>
+</nav>
+
+<div class="px-6 py-5 flex flex-col gap-5" style="flex:1; overflow-y:auto; min-height:0;">
+
+  <!-- Top row: Status + Cookies + Media side by side -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+    <!-- Container status -->
+    <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-700">
+        <h2 class="font-semibold text-slate-100 text-sm">Container Status</h2>
+      </div>
+      <div class="px-4 py-4 space-y-3 text-sm">
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Name</span>
+          <span class="text-slate-100 font-mono text-xs">ytdl-manager-v2</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">State</span>
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-green-900/60 text-green-300 border-green-700">running</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Port</span>
+          <span class="text-slate-100 font-mono text-xs">8912 → 8080</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">API</span>
+          <span id="api-health" class="text-green-400 text-xs">checking…</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">yt-dlp</span>
+          <span id="ytdlp-ver" class="text-slate-100 font-mono text-xs">…</span>
+        </div>
+      </div>
+      <div class="px-4 py-3 border-t border-slate-700 flex flex-col gap-2">
+        <button onclick="updateYtdlp()" id="update-btn"
+          class="w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 rounded font-medium transition-colors">
+          Update yt-dlp
+        </button>
+        <div class="text-xs text-slate-500 text-center pt-1 border-t border-slate-700">
+          Restart / rebuild: run from server shell
+          <div class="font-mono mt-1 text-slate-600">cd ~/ai/ytdl-manager-v2</div>
+          <div class="font-mono text-slate-600">docker compose restart</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cookies -->
+    <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-700">
+        <h2 class="font-semibold text-slate-100 text-sm">YouTube Cookies</h2>
+      </div>
+      <div class="px-4 py-4 space-y-3 text-sm">
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">File</span>
+          <span class="text-slate-100 font-mono text-xs">/data/cookies.txt</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Present</span>
+          <span id="cookies-exists" class="text-xs">…</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Cookie lines</span>
+          <span id="cookies-count" class="text-slate-100 text-xs">…</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Last updated</span>
+          <span id="cookies-age" class="text-slate-100 text-xs">…</span>
+        </div>
+      </div>
+      <div class="px-4 py-3 border-t border-slate-700 flex flex-col gap-2">
+        <button onclick="refreshCookies()" id="cookies-btn"
+          class="w-full px-3 py-1.5 text-xs bg-green-700 hover:bg-green-600 rounded font-medium transition-colors">
+          Refresh Cookies (KBM)
+        </button>
+        <button onclick="verifyCookies()" id="verify-btn"
+          class="w-full px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+          Verify Cookies
+        </button>
+        <div id="verify-result" class="text-xs text-slate-500 hidden"></div>
+      </div>
+    </div>
+
+    <!-- Media -->
+    <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-700">
+        <h2 class="font-semibold text-slate-100 text-sm">Media Library</h2>
+      </div>
+      <div class="px-4 py-4 space-y-3 text-sm">
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Downloads path</span>
+          <span class="text-slate-100 font-mono text-xs">/downloads</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">DVR scanner</span>
+          <span class="text-slate-100 text-xs">Channels DVR</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Last scan</span>
+          <span id="last-scan" class="text-slate-100 text-xs">—</span>
+        </div>
+      </div>
+      <div class="px-4 py-3 border-t border-slate-700">
+        <button onclick="scanMedia()" id="scan-btn"
+          class="w-full px-3 py-1.5 text-xs bg-violet-700 hover:bg-violet-600 rounded font-medium transition-colors">
+          Scan Media
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Container log — full width, fills remaining space -->
+  <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+    <div class="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
+      <h2 class="font-semibold text-slate-100 text-sm">Container Log</h2>
+      <div class="flex items-center gap-3">
+        <select id="log-lines" onchange="loadLog()"
+          class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none">
+          <option value="50">Last 50 lines</option>
+          <option value="100" selected>Last 100 lines</option>
+          <option value="200">Last 200 lines</option>
+        </select>
+        <button onclick="loadLog()"
+          class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+          Reload
+        </button>
+      </div>
+    </div>
+    <div id="log-wrap" style="flex:1; min-height:80px; position:relative; background:#020617;">
+      <pre id="log-content"
+        class="log-content font-mono text-xs text-slate-300 p-4 overflow-auto bg-slate-950"
+        style="position:absolute; inset:0; white-space:pre-wrap; word-break:break-all;">Loading…</pre>
+    </div>
+  </div>
+
+</div>
+
+{% raw %}
+<script>
+function timeAgo(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr.replace(' UTC','Z').replace(' ','T'));
+  if (isNaN(d)) return isoStr;
+  const sec = Math.floor((Date.now() - d) / 1000);
+  if (sec < 60)    return `${sec}s ago`;
+  if (sec < 3600)  return `${Math.floor(sec/60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec/3600)}h ago`;
+  return `${Math.floor(sec/86400)}d ago`;
+}
+
+async function loadStatus() {
+  try {
+    const data = await fetch('/api/status').then(r => r.json());
+    document.getElementById('ytdlp-ver').textContent = data.ytdlp_version || '—';
+  } catch(e) {}
+  try {
+    await fetch('/health');
+    document.getElementById('api-health').textContent = '✓ ok';
+    document.getElementById('api-health').className = 'text-green-400 text-xs';
+  } catch(e) {
+    document.getElementById('api-health').textContent = '✗ unreachable';
+    document.getElementById('api-health').className = 'text-red-400 text-xs';
+  }
+}
+
+async function loadCookies() {
+  try {
+    const d = await fetch('/api/cookies-info').then(r => r.json());
+    document.getElementById('cookies-exists').textContent = d.exists ? 'yes' : 'no';
+    document.getElementById('cookies-exists').className = d.exists ? 'text-green-400 text-xs' : 'text-red-400 text-xs';
+    document.getElementById('cookies-count').textContent = d.exists ? d.cookie_count : '—';
+    document.getElementById('cookies-age').textContent   = d.exists ? timeAgo(d.modified_at) : '—';
+  } catch(e) {}
+}
+
+async function loadLog() {
+  const lines = document.getElementById('log-lines').value;
+  const pre = document.getElementById('log-content');
+  pre.textContent = 'Loading…';
+  try {
+    const data = await fetch(`/api/container-logs?lines=${lines}`).then(r => r.json());
+    pre.textContent = (data.lines || []).join('\n') || '(no log output)';
+    pre.scrollTop = pre.scrollHeight;
+  } catch(e) {
+    pre.textContent = 'Error fetching log.';
+  }
+}
+
+async function updateYtdlp() {
+  const btn = document.getElementById('update-btn');
+  btn.textContent = 'Updating…';
+  btn.disabled = true;
+  try {
+    const d = await fetch('/api/ytdlp-update', {method:'POST'}).then(r => r.json());
+    document.getElementById('ytdlp-ver').textContent = d.version || '—';
+    btn.textContent = 'Updated ✓';
+  } catch(e) {
+    btn.textContent = 'Failed';
+  }
+  setTimeout(() => { btn.textContent = 'Update yt-dlp'; btn.disabled = false; }, 3000);
+}
+
+function refreshCookies() {
+  const btn = document.getElementById('cookies-btn');
+  const KBM_UUID = 'F6F4E169-13C0-4E67-8B10-296B07F2A309';
+  btn.textContent = 'Triggering…';
+  btn.disabled = true;
+  window.location.href = `kmtrigger://macro=${KBM_UUID}&value=1`;
+  setTimeout(() => { btn.textContent = 'Refresh Cookies (KBM)'; btn.disabled = false; }, 3000);
+}
+
+async function verifyCookies() {
+  const btn = document.getElementById('verify-btn');
+  const result = document.getElementById('verify-result');
+  btn.textContent = 'Verifying…';
+  btn.disabled = true;
+  result.className = 'text-xs text-slate-400 mt-1';
+  result.textContent = 'Running yt-dlp format check…';
+  // Hit a known short public video — just checks cookies auth
+  try {
+    const d = await fetch('/api/cookies-info').then(r => r.json());
+    if (!d.exists) {
+      result.textContent = 'No cookies file found.';
+      result.className = 'text-xs text-red-400 mt-1';
+    } else if (d.cookie_count < 5) {
+      result.textContent = `Only ${d.cookie_count} cookie lines — may be expired.`;
+      result.className = 'text-xs text-amber-400 mt-1';
+    } else {
+      result.textContent = `${d.cookie_count} cookie lines present, updated ${timeAgo(d.modified_at)}.`;
+      result.className = 'text-xs text-green-400 mt-1';
+    }
+  } catch(e) {
+    result.textContent = 'Error checking cookies.';
+    result.className = 'text-xs text-red-400 mt-1';
+  }
+  result.classList.remove('hidden');
+  btn.textContent = 'Verify Cookies';
+  btn.disabled = false;
+}
+
+async function scanMedia() {
+  const btn = document.getElementById('scan-btn');
+  btn.textContent = 'Scanning…';
+  btn.disabled = true;
+  try {
+    const d = await fetch('/api/scan-media', {method:'PUT'}).then(r => r.json());
+    btn.textContent = d.ok ? 'Scan triggered ✓' : 'Scan failed';
+    document.getElementById('last-scan').textContent = 'just now';
+  } catch(e) {
+    btn.textContent = 'Failed';
+  }
+  setTimeout(() => { btn.textContent = 'Scan Media'; btn.disabled = false; }, 3000);
+}
+
+async function doRefresh() {
+  await Promise.all([loadStatus(), loadCookies()]);
+  await loadLog();
+  const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  document.getElementById('last-refresh').textContent = `Updated ${now}`;
+}
+
+doRefresh();
+
+
+</script>
+{% endraw %}
+</body>
+</html>

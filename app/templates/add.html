@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add subscription — ytdl-manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>body { background-color: #0f172a; color: #f1f5f9; }</style>
+</head>
+<body class="min-h-screen">
+
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-4 sticky top-0 z-10">
+  <a href="/" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">← Dashboard</a>
+  <span class="text-sm font-semibold text-slate-100">Add subscription</span>
+  <div class="flex-1"></div>
+  <a href="/add/help" target="_blank"
+    class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+    Help
+  </a>
+</header>
+
+<div class="max-w-2xl mx-auto px-6 py-8">
+  <div id="msg" class="hidden mb-4 px-4 py-3 rounded text-sm font-medium"></div>
+
+  <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+    <form id="add-form" class="divide-y divide-slate-700">
+
+      <!-- Source -->
+      <div class="px-6 py-4">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Source</h2>
+        <div class="grid gap-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">URL</label>
+            <input id="url" type="text" required
+              placeholder="https://www.youtube.com/@handle  or  playlist?list=..."
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Name</label>
+              <input id="name" type="text" placeholder="display label"
+                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Output directory</label>
+              <input id="output_dir" type="text" placeholder="/downloads/name" required
+                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Schedule & Quality -->
+      <div class="px-6 py-4">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Schedule &amp; Quality</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Interval (hours)</label>
+            <input id="interval_hours" type="number" value="6" min="1" step="1"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Quality</label>
+            <select id="quality"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="1440" selected>1440p</option>
+              <option value="1080">1080p</option>
+              <option value="720">720p</option>
+              <option value="480">480p</option>
+              <option value="best">best</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="px-6 py-4">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Filters</h2>
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">date_after (playlists only)</label>
+            <input id="date_after" type="text" placeholder="today-30days  or  20250101"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Min duration (seconds)</label>
+            <input id="filter_min_duration" type="number" value="180" min="0"
+              class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+          </div>
+        </div>
+        <div class="flex gap-6">
+          <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+            <input id="filter_exclude_shorts" type="checkbox" checked class="w-4 h-4 accent-blue-500">
+            Exclude Shorts
+          </label>
+          <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+            <input id="filter_exclude_live" type="checkbox" checked class="w-4 h-4 accent-blue-500">
+            Exclude Live
+          </label>
+          <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+            <input id="filter_exclude_was_live" type="checkbox" checked class="w-4 h-4 accent-blue-500">
+            Exclude Past Live
+          </label>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 flex justify-end gap-3">
+        <a href="/" class="px-4 py-2 text-sm bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors">
+          Cancel
+        </a>
+        <button type="submit" id="save-btn"
+          class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded font-medium transition-colors">
+          Save
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+// Auto-fill name and output_dir from URL, and output_dir from name
+const urlEl  = document.getElementById('url');
+const nameEl = document.getElementById('name');
+const dirEl  = document.getElementById('output_dir');
+let nameTouched = false;
+let dirTouched  = false;
+nameEl.addEventListener('input', () => { nameTouched = true; });
+dirEl.addEventListener('input',  () => { dirTouched  = true; });
+
+function nameFromUrl(url) {
+  // @handle → handle
+  const handle = url.match(/\/@([^/?&#]+)/);
+  if (handle) return handle[1];
+  // /channel/UCxxx — skip, no clean name
+  // /playlist?list= — skip
+  return '';
+}
+
+urlEl.addEventListener('input', () => {
+  const derived = nameFromUrl(urlEl.value.trim());
+  if (!derived) return;
+  if (!nameTouched) nameEl.value = derived;
+  if (!dirTouched)  dirEl.value  = '/downloads/' + (nameTouched ? nameEl.value.trim() || derived : derived);
+});
+
+nameEl.addEventListener('input', () => {
+  nameTouched = true;
+  if (!dirTouched) {
+    dirEl.value = '/downloads/' + nameEl.value.trim().replace(/\s+/g, '_');
+  }
+});
+
+function showMsg(text, ok) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'mb-4 px-4 py-3 rounded text-sm font-medium ' +
+    (ok ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200');
+}
+
+document.getElementById('add-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('save-btn');
+  btn.textContent = 'Saving…';
+  btn.disabled = true;
+
+  const body = {
+    url:                     document.getElementById('url').value.trim(),
+    name:                    document.getElementById('name').value.trim() || null,
+    output_dir:              document.getElementById('output_dir').value.trim(),
+    interval_hours:          parseFloat(document.getElementById('interval_hours').value),
+    quality:                 document.getElementById('quality').value,
+    filter_min_duration:     parseInt(document.getElementById('filter_min_duration').value),
+    filter_exclude_shorts:   document.getElementById('filter_exclude_shorts').checked,
+    filter_exclude_live:     document.getElementById('filter_exclude_live').checked,
+    filter_exclude_was_live: document.getElementById('filter_exclude_was_live').checked,
+  };
+  const dateAfter = document.getElementById('date_after').value.trim();
+  if (dateAfter) body.date_after = dateAfter;
+
+  // Auto-prefix /downloads/ if missing
+  if (body.output_dir && !body.output_dir.startsWith('/downloads/')) {
+    body.output_dir = '/downloads/' + body.output_dir.replace(/^\/+/, '');
+  }
+
+  try {
+    const resp = await fetch('/subscriptions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (resp.status === 409) {
+      showMsg('Already subscribed: ' + (data.detail || ''), false);
+    } else if (!resp.ok) {
+      showMsg('Error: ' + (data.detail || resp.status), false);
+    } else {
+      showMsg('Subscription added — initial run started.', true);
+      setTimeout(() => { window.location.href = '/'; }, 1500);
+    }
+  } catch (err) {
+    showMsg('Request failed: ' + err, false);
+  }
+
+  btn.textContent = 'Save';
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

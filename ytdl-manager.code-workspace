@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"name": "ytdl-manager",
+			"path": "."
+		},
+		{
+			"path": "../homekit-km-bridge"
+		}
+	],
+	"settings": {}
+}
