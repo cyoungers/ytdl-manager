@@ -25,12 +25,16 @@
 </head>
 <body class="min-h-screen">
 
-<header class="bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center gap-3 sticky top-0 z-10">
-  <a href="/" class="text-slate-400 hover:text-white text-sm transition-colors">← Dashboard</a>
-  <span class="text-slate-600">|</span>
-  <span class="text-xl font-bold text-slate-100">ytdl-manager</span>
-  <span class="text-slate-500 text-sm">Help &amp; Reference</span>
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-4 sticky top-0 z-10">
+  <span class="text-sm font-bold text-slate-100">ytdl-manager</span>
+  <span class="text-xs text-slate-600">v2</span>
+  <span class="text-xs text-slate-500">Help &amp; Reference</span>
 </header>
+<nav class="bg-slate-800 border-b border-slate-700 px-6 flex gap-0">
+  <a href="/" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Dashboard</a>
+  <a href="/jobs-page" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Job Status</a>
+  <a href="/container" class="nav-link px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-100 border-b-2 border-transparent hover:border-slate-500 transition-colors">Container</a>
+</nav>
 
 <div class="max-w-3xl mx-auto px-6 py-8">
 
@@ -41,6 +45,9 @@
       <li><a href="#overview">Overview</a></li>
       <li><a href="#dashboard">Using the Dashboard</a></li>
       <li><a href="#subscriptions">Subscriptions</a></li>
+      <li><a href="#addedit">Adding &amp; Editing Subscriptions</a></li>
+      <li><a href="#jobs">Job Status Page</a></li>
+      <li><a href="#container">Container Page</a></li>
       <li><a href="#quality">Quality Settings</a></li>
       <li><a href="#cookies">YouTube Cookies (Important)</a></li>
       <li><a href="#filters">Video Filters</a></li>
@@ -53,7 +60,7 @@
 
   <!-- 1. Overview -->
   <h2 id="overview">1. Overview</h2>
-  <p>ytdl-manager is a self-hosted YouTube subscription manager running in Docker on the MINI-S server (192.168.0.166, port 8911). It monitors YouTube channels and playlists on a schedule and automatically downloads new videos using yt-dlp.</p>
+  <p>ytdl-manager is a self-hosted YouTube subscription manager running in Docker on the MINI-S server (192.168.0.166, port 8912). It monitors YouTube channels and playlists on a schedule and automatically downloads new videos using yt-dlp.</p>
   <ul>
     <li>Downloads are stored on the server's local disk, organized by channel name.</li>
     <li>Each subscription has its own download archive — already-downloaded videos are never re-downloaded.</li>
@@ -64,12 +71,17 @@
   <!-- 2. Dashboard -->
   <h2 id="dashboard">2. Using the Dashboard</h2>
 
-  <h3>Header buttons</h3>
+  <h3>Header</h3>
+  <p>The header contains only the app title, yt-dlp version, Help link, and ⟳ Refresh button. The nav strip below the header links to the Dashboard, Job Status, and Container pages — the active page is highlighted in blue.</p>
   <ul>
-    <li><strong>Scan Media</strong> — rescans the downloads folder and updates the Recent Downloads list.</li>
+    <li><strong>⟳ Refresh</strong> — manually refreshes dashboard data. The timestamp next to it confirms when the last refresh ran.</li>
+    <li><strong>yt-dlp [version]</strong> — shows the currently installed yt-dlp version. If a newer release is available on GitHub, an <em>Update available</em> button appears — click it to update without a full Docker rebuild.</li>
+  </ul>
+
+  <h3>Subscriptions panel header</h3>
+  <ul>
     <li><strong>Check All</strong> — immediately triggers a check for every subscription (asks for confirmation first).</li>
-    <li><strong>Refresh</strong> — manually refreshes the dashboard data.</li>
-    <li><strong>yt-dlp [version]</strong> — shows the currently installed yt-dlp version. If a newer release is available on GitHub, an <em>Update available</em> button appears — click it to update in place without a full Docker rebuild.</li>
+    <li><strong>+ Add</strong> — opens the Add subscription page.</li>
   </ul>
 
   <h3>Stat bar</h3>
@@ -81,7 +93,13 @@
   </ul>
 
   <h3>Subscription table</h3>
-  <p>Click any row to open that subscription's log in the bottom panel. Use the filter buttons (All / Errors / Downloading) to narrow the list. The <strong>Check</strong> button on each row triggers an immediate check for that subscription only.</p>
+  <p>Click any row to open that subscription's log in the bottom panel. Use the filter pills (All / Errors / Downloading / Paused) to narrow the list. Each row has four action buttons:</p>
+  <ul>
+    <li><strong>Check</strong> — triggers an immediate check for that subscription only.</li>
+    <li><strong>Edit</strong> — opens the Edit subscription page.</li>
+    <li><strong>⏸ / ▶</strong> — pause or resume the subscription's scheduled checks.</li>
+    <li><strong>Del</strong> — deletes the subscription after confirmation (downloaded files are kept).</li>
+  </ul>
 
   <h3>Recent Downloads panel</h3>
   <p>Shows the 200 most recently downloaded videos, newest first. Updates automatically on each refresh cycle.</p>
@@ -107,12 +125,6 @@
     <li><strong>24h</strong> — infrequently-updated channels</li>
   </ul>
 
-  <h3>Adding or editing subscriptions</h3>
-  <p>Subscriptions are stored in the SQLite database at <code>/data/subscriptions.db</code> inside the container. There is no UI editor yet — modifications require direct database access via SSH:</p>
-  <pre><code>ssh cyoungers@192.168.0.166
-docker exec -it ytdl-manager python3
-# Then use sqlite3 or Python sqlite3 module</code></pre>
-
   <h3>Status values</h3>
   <ul>
     <li><strong>ok</strong> (green) — last run completed successfully.</li>
@@ -121,8 +133,50 @@ docker exec -it ytdl-manager python3
     <li><strong>idle</strong> (grey) — subscription is disabled or has never been checked.</li>
   </ul>
 
-  <!-- 4. Quality -->
-  <h2 id="quality">4. Quality Settings</h2>
+  <!-- 4. Add/Edit -->
+  <h2 id="addedit">4. Adding &amp; Editing Subscriptions</h2>
+  <p>Use the <strong>+ Add</strong> button in the subscriptions panel header to open the Add page. Use the <strong>Edit</strong> button on any row to open the Edit page. Both pages have a <strong>Help</strong> link in the top-right that opens a full field reference in a new tab.</p>
+  <h3>Fields</h3>
+  <ul>
+    <li><strong>URL</strong> — YouTube channel (<code>/@handle</code> or <code>/channel/UC...</code>) or playlist (<code>?list=...</code>) URL. Pasting a <code>/@handle</code> URL auto-fills the Name and Output directory fields.</li>
+    <li><strong>Name</strong> — display label used in the UI and logs. Editing the name also updates the output directory if it hasn't been manually changed.</li>
+    <li><strong>Output directory</strong> — where videos are saved inside the container. Must start with <code>/downloads/</code> — the prefix is added automatically if omitted.</li>
+    <li><strong>Interval (hours)</strong> — how often the subscription is checked. After saving, use Stagger Schedules on the Job Status page to redistribute timing.</li>
+    <li><strong>Quality</strong> — see Quality Settings section below.</li>
+    <li><strong>date_after</strong> — playlists only; skip videos uploaded before this date. Accepts <code>YYYYMMDD</code> or relative values like <code>today-30days</code>.</li>
+    <li><strong>Min duration (seconds)</strong> — skip videos shorter than this. Default 180 (3 minutes). Set to 0 to disable.</li>
+    <li><strong>Exclude Shorts / Live / Past Live</strong> — filter checkboxes, all on by default.</li>
+  </ul>
+
+  <!-- 5. Job Status -->
+  <h2 id="jobs">5. Job Status Page</h2>
+  <p>Accessible via the nav strip. Shows all recent and running download jobs and the upcoming schedule.</p>
+  <h3>Jobs table</h3>
+  <p>Click any row to load that subscription's log in the viewer panel on the right. The table auto-refreshes every 5 seconds when jobs are running, every 15 seconds otherwise. Use the filter pills (All / Running / Completed / Failed) to narrow the list.</p>
+  <ul>
+    <li><strong>Found</strong> — number of new video IDs discovered on this run.</li>
+    <li><strong>Done</strong> — number successfully downloaded.</li>
+    <li><strong>Fail</strong> — number that errored (non-zero exit).</li>
+  </ul>
+  <h3>Upcoming Scheduled Runs</h3>
+  <p>Shows the next scheduled run time for every enabled subscription, sorted by time.</p>
+  <h3>Stagger Schedules</h3>
+  <p>If subscriptions start firing simultaneously, click <strong>Stagger Schedules</strong> to redistribute them evenly across their interval windows. Also run this after a container restart since APScheduler state is in-memory only.</p>
+
+  <!-- 6. Container -->
+  <h2 id="container">6. Container Page</h2>
+  <p>Accessible via the nav strip. Provides container status, cookie management, media scanning, and a log viewer.</p>
+  <h3>Status card</h3>
+  <p>Shows container name, running state, port mapping, API health, and current yt-dlp version. The <strong>Update yt-dlp</strong> button updates in place without a Docker rebuild. Restart and full rebuild must be done from the server shell.</p>
+  <h3>Cookies card</h3>
+  <p>Shows whether <code>/data/cookies.txt</code> is present, how many cookie lines it contains, and when it was last updated. <strong>Refresh Cookies (KBM)</strong> triggers the Keyboard Maestro macro on your Mac to run the automated cookie export flow. <strong>Verify Cookies</strong> does a quick sanity check on the file.</p>
+  <h3>Media Library card</h3>
+  <p><strong>Scan Media</strong> triggers the Channels DVR scanner to pick up newly downloaded files.</p>
+  <h3>Container Log</h3>
+  <p>Shows recent download activity from <code>/data/downloads.log</code>. The pane fills the remaining viewport height. Use the line count selector and Reload button to control how much is shown.</p>
+
+  <!-- 7. Quality (renumbered) -->
+  <h2 id="quality">7. Quality Settings</h2>
   <p>Each subscription has a <code>quality</code> setting that controls the yt-dlp format selector. Available options:</p>
   <ul>
     <li><strong>best</strong> — highest available resolution (no cap). May be 4K for channels that publish it.</li>
@@ -137,7 +191,7 @@ docker exec -it ytdl-manager python3
   </div>
 
   <!-- 5. Cookies -->
-  <h2 id="cookies">5. YouTube Cookies (Important)</h2>
+  <h2 id="cookies">8. YouTube Cookies (Important)</h2>
   <p>YouTube requires authentication cookies to serve high-resolution adaptive streams (1080p, 1440p, 4K). Without valid cookies, yt-dlp falls back to format 18 — a combined 360p stream — causing the blocky/artifacted video quality.</p>
 
   <div class="callout warn">
@@ -167,10 +221,10 @@ docker exec -it ytdl-manager python3
 scp ~/Downloads/cookies.txt cyoungers@192.168.0.166:/tmp/cookies.txt
 
 # Install into the Docker container
-ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cookies.txt"</code></pre>
+ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager-v2:/data/cookies.txt"</code></pre>
 
   <h3>Verifying cookies are working</h3>
-  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager yt-dlp \
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager-v2 yt-dlp \
   --js-runtimes node \
   --cookies /data/cookies.txt \
   --extractor-args 'youtube:player_client=mweb' \
@@ -179,7 +233,7 @@ ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cooki
   <p>You should see 20+ format options including 1080p and 1440p. If you only see format 18 (360p), the cookies are not valid.</p>
 
   <!-- 6. Filters -->
-  <h2 id="filters">6. Video Filters</h2>
+  <h2 id="filters">9. Video Filters</h2>
   <p>All downloads are subject to a built-in <code>--match-filter</code> that silently skips videos that don't meet these criteria:</p>
   <ul>
     <li><strong>Duration &gt; 3 minutes</strong> — skips Shorts and very short clips.</li>
@@ -196,7 +250,7 @@ ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cooki
   <p>These cases appear in the log but result in <code>Exit code: 0</code> (success).</p>
 
   <!-- 7. Logs -->
-  <h2 id="logs">7. Reading the Log Viewer</h2>
+  <h2 id="logs">10. Reading the Log Viewer</h2>
   <p>Click any subscription row on the dashboard to open its log. The log file is the raw yt-dlp output for that subscription, appended across all runs. Here's how to read it:</p>
 
   <h3>Run header</h3>
@@ -230,7 +284,7 @@ Found 3 new video(s)</code></pre>
   </ul>
 
   <!-- 8. Troubleshooting -->
-  <h2 id="troubleshooting">8. Troubleshooting</h2>
+  <h2 id="troubleshooting">11. Troubleshooting</h2>
 
   <h3>Videos look blocky / low quality (360p)</h3>
   <p>This is almost always expired YouTube cookies. The log will show <code>[info] abc123: Downloading 1 format(s): 18</code> (a single format number, no <code>+</code>). Fix: refresh cookies using the incognito method described in <a href="#cookies">Section 5</a>.</p>
@@ -249,27 +303,27 @@ Found 3 new video(s)</code></pre>
 
   <h3>Subscription stuck in "downloading" status</h3>
   <p>If a subscription shows as downloading but the log isn't updating, the download process may have hung. Restart the container:</p>
-  <pre><code>ssh cyoungers@192.168.0.166 "docker restart ytdl-manager"</code></pre>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker restart ytdl-manager-v2"</code></pre>
 
   <h3>All subscriptions show "never checked" after a restart</h3>
   <p>The <code>last_checked</code> times are stored in the SQLite database, which lives in a Docker named volume (<code>ytdl-data</code>). They persist across restarts. If they appear reset, the volume may have been accidentally deleted during a <code>docker compose down -v</code>.</p>
 
   <!-- 9. Maintenance -->
-  <h2 id="maintenance">9. Maintenance &amp; Updates</h2>
+  <h2 id="maintenance">12. Maintenance &amp; Updates</h2>
 
   <h3>Updating yt-dlp</h3>
   <p>The easiest way is via the dashboard — if a newer version is available on GitHub, an <em>Update available</em> button appears next to the version number in the header. Click it to update in place without any Docker rebuild.</p>
   <p>Alternatively, from the command line:</p>
-  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager yt-dlp -U"</code></pre>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager-v2 yt-dlp -U"</code></pre>
 
   <h3>Deploying Python code changes (no rebuild)</h3>
   <p>For changes to <code>main.py</code> only (no new dependencies):</p>
-  <pre><code>ssh cyoungers@192.168.0.166 "cd ~/ai/ytdl-manager && git pull && \
-  docker cp app/main.py ytdl-manager:/app/main.py && \
-  docker restart ytdl-manager"</code></pre>
+  <pre><code>ssh cyoungers@192.168.0.166 "cd ~/ai/ytdl-manager-v2 && git pull && \
+  docker cp app/main.py ytdl-manager-v2:/app/main.py && \
+  docker restart ytdl-manager-v2"</code></pre>
 
   <h3>Full Docker rebuild (new dependencies or Dockerfile changes)</h3>
-  <pre><code>ssh cyoungers@192.168.0.166 "cd ~/ai/ytdl-manager && git pull && \
+  <pre><code>ssh cyoungers@192.168.0.166 "cd ~/ai/ytdl-manager-v2 && git pull && \
   docker compose down && \
   docker compose build --no-cache && \
   docker compose up -d"</code></pre>
@@ -279,7 +333,7 @@ Found 3 new video(s)</code></pre>
 
   <h3>Accessing the database</h3>
   <pre><code>ssh cyoungers@192.168.0.166
-docker exec -it ytdl-manager python3 -c "
+docker exec -it ytdl-manager-v2 python3 -c "
 import sqlite3, json
 c = sqlite3.connect('/data/subscriptions.db')
 c.row_factory = sqlite3.Row
@@ -289,22 +343,22 @@ for r in rows: print(dict(r))
 
   <h3>Re-staggering the schedule</h3>
   <p>If subscriptions start bunching up and running at the same time, hit the stagger endpoint to redistribute them evenly across their interval windows:</p>
-  <pre><code>curl -X POST http://192.168.0.166:8911/api/stagger</code></pre>
+  <pre><code>curl -X POST http://192.168.0.166:8912/api/stagger</code></pre>
   <p>This reschedules all enabled subscriptions in APScheduler directly — subscriptions with the same interval are spread evenly across that interval. For example, 11 hourly subs will fire ~5.5 minutes apart; 27 six-hourly subs will fire ~13 minutes apart. The staggering persists indefinitely since each subscription recurs independently from its own start time.</p>
 
   <h3>Viewing recent successful downloads</h3>
-  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager tail -50 /data/downloads.log"</code></pre>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager-v2 tail -50 /data/downloads.log"</code></pre>
 
   <!-- 10. Architecture -->
-  <h2 id="architecture">10. Architecture Reference</h2>
+  <h2 id="architecture">13. Architecture Reference</h2>
 
   <h3>Infrastructure</h3>
   <ul>
     <li><strong>Host:</strong> Ubuntu, hostname <code>cyoungers-MINI-S</code> (192.168.0.166)</li>
-    <li><strong>Container:</strong> <code>ytdl-manager</code> — Python 3.12 + FastAPI + yt-dlp</li>
-    <li><strong>Port:</strong> 8911 on host → 8080 in container</li>
-    <li><strong>Repo:</strong> <code>https://github.com/cyoungers/ytdl-manager</code></li>
-    <li><strong>Project path on host:</strong> <code>~/ai/ytdl-manager</code></li>
+    <li><strong>Container:</strong> <code>ytdl-manager-v2</code> — Python 3.12 + FastAPI + yt-dlp</li>
+    <li><strong>Port:</strong> 8912 on host → 8080 in container</li>
+    <li><strong>Repo:</strong> <code>https://github.com/cyoungers/ytdl-manager</code> (v2 branch)</li>
+    <li><strong>Project path on host:</strong> <code>~/ai/ytdl-manager-v2</code></li>
   </ul>
 
   <h3>Data volume (<code>ytdl-data</code>)</h3>
@@ -315,6 +369,9 @@ for r in rows: print(dict(r))
     <li><code>/data/cookies.txt</code> — YouTube session cookies</li>
     <li><code>/data/downloads.log</code> — plain text log of all successful downloads</li>
   </ul>
+
+  <h3>Downloads folder</h3>
+  <p>Videos are stored on the NAS at <a href="smb://Chris@CJYNAS._smb._tcp.local/video/ytdl-manager">smb://Chris@CJYNAS._smb._tcp.local/video/ytdl-manager</a> — clicking this link opens the folder in Finder.</p>
 
   <h3>How a channel check works</h3>
   <ol>
