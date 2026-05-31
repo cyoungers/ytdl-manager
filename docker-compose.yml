@@ -1,10 +1,10 @@
 services:
-  ytdl-manager-v2:
+  ytdl-manager:
     build: .
-    container_name: ytdl-manager-v2
+    container_name: ytdl-manager
     restart: unless-stopped
     ports:
-      - "8912:8080"
+      - "8911:8080"
     volumes:
       - ytdl-data:/data
       - /mnt/nas/video/ytdl-manager:/downloads
