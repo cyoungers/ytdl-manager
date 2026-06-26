@@ -60,7 +60,7 @@
 
   <!-- 1. Overview -->
   <h2 id="overview">1. Overview</h2>
-  <p>ytdl-manager is a self-hosted YouTube subscription manager running in Docker on the MINI-S server (192.168.0.166, port 8912). It monitors YouTube channels and playlists on a schedule and automatically downloads new videos using yt-dlp.</p>
+  <p>ytdl-manager is a self-hosted YouTube subscription manager running in Docker on the MINI-S server (192.168.0.166, port 8911). It monitors YouTube channels and playlists on a schedule and automatically downloads new videos using yt-dlp.</p>
   <ul>
     <li>Downloads are stored on the server's local disk, organized by channel name.</li>
     <li>Each subscription has its own download archive — already-downloaded videos are never re-downloaded.</li>
@@ -221,10 +221,10 @@
 scp ~/Downloads/cookies.txt cyoungers@192.168.0.166:/tmp/cookies.txt
 
 # Install into the Docker container
-ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager-v2:/data/cookies.txt"</code></pre>
+ssh cyoungers@192.168.0.166 "docker cp /tmp/cookies.txt ytdl-manager:/data/cookies.txt"</code></pre>
 
   <h3>Verifying cookies are working</h3>
-  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager-v2 yt-dlp \
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager yt-dlp \
   --js-runtimes node \
   --cookies /data/cookies.txt \
   --extractor-args 'youtube:player_client=mweb' \
@@ -299,11 +299,11 @@ Found 3 new video(s)</code></pre>
   </ul>
 
   <h3>n challenge solving failed</h3>
-  <p>This warning appears when yt-dlp can't solve YouTube's "n parameter" throttle challenge. It requires Node.js to be available inside the container. If seen frequently, it may indicate the challenge script is outdated — updating yt-dlp usually fixes it.</p>
+  <p>This warning means yt-dlp's node EJS challenge solver isn't available. Two requirements must both be met: Node.js 22.0.0 or later (the Debian apt nodejs package lags at 20.x and is reported "unsupported" even though <code>node --version</code> works) and the <code>yt-dlp-ejs</code> package, which only comes bundled when yt-dlp is installed with <code>pip install "yt-dlp[default]"</code> rather than plain <code>pip install yt-dlp</code>. Check with <code>docker exec ytdl-manager node --version</code> and <code>docker exec ytdl-manager pip show yt-dlp-ejs</code>.</p>
 
   <h3>Subscription stuck in "downloading" status</h3>
   <p>If a subscription shows as downloading but the log isn't updating, the download process may have hung. Restart the container:</p>
-  <pre><code>ssh cyoungers@192.168.0.166 "docker restart ytdl-manager-v2"</code></pre>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker restart ytdl-manager"</code></pre>
 
   <h3>All subscriptions show "never checked" after a restart</h3>
   <p>The <code>last_checked</code> times are stored in the SQLite database, which lives in a Docker named volume (<code>ytdl-data</code>). They persist across restarts. If they appear reset, the volume may have been accidentally deleted during a <code>docker compose down -v</code>.</p>
@@ -314,13 +314,13 @@ Found 3 new video(s)</code></pre>
   <h3>Updating yt-dlp</h3>
   <p>The easiest way is via the dashboard — if a newer version is available on GitHub, an <em>Update available</em> button appears next to the version number in the header. Click it to update in place without any Docker rebuild.</p>
   <p>Alternatively, from the command line:</p>
-  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager-v2 yt-dlp -U"</code></pre>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager yt-dlp -U"</code></pre>
 
   <h3>Deploying Python code changes (no rebuild)</h3>
   <p>For changes to <code>main.py</code> only (no new dependencies):</p>
   <pre><code>ssh cyoungers@192.168.0.166 "cd ~/ai/ytdl-manager-v2 && git pull && \
-  docker cp app/main.py ytdl-manager-v2:/app/main.py && \
-  docker restart ytdl-manager-v2"</code></pre>
+  docker cp app/main.py ytdl-manager:/app/main.py && \
+  docker restart ytdl-manager"</code></pre>
 
   <h3>Full Docker rebuild (new dependencies or Dockerfile changes)</h3>
   <pre><code>ssh cyoungers@192.168.0.166 "cd ~/ai/ytdl-manager-v2 && git pull && \
@@ -333,7 +333,7 @@ Found 3 new video(s)</code></pre>
 
   <h3>Accessing the database</h3>
   <pre><code>ssh cyoungers@192.168.0.166
-docker exec -it ytdl-manager-v2 python3 -c "
+docker exec -it ytdl-manager python3 -c "
 import sqlite3, json
 c = sqlite3.connect('/data/subscriptions.db')
 c.row_factory = sqlite3.Row
@@ -347,7 +347,7 @@ for r in rows: print(dict(r))
   <p>This reschedules all enabled subscriptions in APScheduler directly — subscriptions with the same interval are spread evenly across that interval. For example, 11 hourly subs will fire ~5.5 minutes apart; 27 six-hourly subs will fire ~13 minutes apart. The staggering persists indefinitely since each subscription recurs independently from its own start time.</p>
 
   <h3>Viewing recent successful downloads</h3>
-  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager-v2 tail -50 /data/downloads.log"</code></pre>
+  <pre><code>ssh cyoungers@192.168.0.166 "docker exec ytdl-manager tail -50 /data/downloads.log"</code></pre>
 
   <!-- 10. Architecture -->
   <h2 id="architecture">13. Architecture Reference</h2>
@@ -355,9 +355,9 @@ for r in rows: print(dict(r))
   <h3>Infrastructure</h3>
   <ul>
     <li><strong>Host:</strong> Ubuntu, hostname <code>cyoungers-MINI-S</code> (192.168.0.166)</li>
-    <li><strong>Container:</strong> <code>ytdl-manager-v2</code> — Python 3.12 + FastAPI + yt-dlp</li>
+    <li><strong>Container:</strong> <code>ytdl-manager</code> — Python 3.12 + FastAPI + yt-dlp</li>
     <li><strong>Port:</strong> 8912 on host → 8080 in container</li>
-    <li><strong>Repo:</strong> <code>https://github.com/cyoungers/ytdl-manager</code> (v2 branch)</li>
+    <li><strong>Repo:</strong> <code>https://github.com/cyoungers/ytdl-manager</code> (main)</li>
     <li><strong>Project path on host:</strong> <code>~/ai/ytdl-manager-v2</code></li>
   </ul>
 
