@@ -1,14 +1,23 @@
 FROM python:3.12-slim
 
-# ffmpeg for merging video+audio; nodejs/npm for yt-dlp JS runtime and bgutil server; git to clone bgutil server
+# ffmpeg for merging video+audio; git to clone bgutil server
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg nodejs npm git \
+    && apt-get install -y --no-install-recommends ffmpeg git curl ca-certificates gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22.x via NodeSource (Debian's apt repo lags below the v22 minimum
+# yt-dlp's EJS node challenge solver requires)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# yt-dlp[default] pulls in yt-dlp-ejs, required for the node EJS challenge solver
+RUN pip install --no-cache-dir -U "yt-dlp[default]"
 
 # Install bgutil PO token provider yt-dlp plugin
 RUN pip install --no-cache-dir bgutil-ytdlp-pot-provider

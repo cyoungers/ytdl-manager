@@ -10,8 +10,10 @@ automatically downloading new videos via yt-dlp.
 - **SQLite** — persistent subscription storage
 - **yt-dlp** — the actual downloader (built into the container)
 - **ffmpeg** — merges separate video/audio streams into mp4
-- **Node.js** — JavaScript runtime required by yt-dlp for YouTube extraction
-- **bgutil-ytdlp-pot-provider** — generates PO tokens to avoid YouTube bot detection
+- **Node.js 22.x (NodeSource)** — JavaScript runtime required by yt-dlp's EJS
+  challenge solver for YouTube extraction (minimum supported version is 22.0.0)
+- **bgutil-ytdlp-pot-provider** — generates PO tokens to avoid YouTube bot detection;
+  runs as a background HTTP server on port 4416, started by `start.sh`
 - **Pillow** — image processing for channel avatar fetching and resizing
 
 ---
@@ -38,9 +40,18 @@ download archive are skipped automatically.
   the full format list including 1080p/1440p/4K. The `android_vr` client is skipped
   by yt-dlp when cookies are present.
 - `--js-runtimes node` is required — yt-dlp defaults to Deno since v2026.03.17,
-  which is not installed. Node.js is available in the container.
-- bgutil PO token provider generates GVS PO tokens when needed (script-node mode;
-  the HTTP server on port 4416 is not used — the warning about it is harmless)
+  which is not installed. Node.js **22.0.0 or later** is required in the container;
+  yt-dlp's node EJS challenge solver reports lower versions (e.g. the Debian apt
+  package, which lags at 20.x) as unsupported and silently falls back to
+  image-only formats. The Dockerfile installs Node 22.x via NodeSource for this
+  reason — do not switch it back to the plain `apt-get install nodejs` package.
+- The `yt-dlp[default]` extras (which bundle `yt-dlp-ejs`) must be installed —
+  plain `pip install yt-dlp` is not sufficient for the node challenge solver to
+  be detected as available.
+- bgutil PO token provider's HTTP server (`build/main.js`) is started in the
+  background by `start.sh` and listens on port 4416. yt-dlp's `bgutil:http`
+  provider talks to it directly; if it isn't running, yt-dlp silently falls
+  back to the slower `bgutil:script-node` method per video.
 - Scheduling uses explicit staggered start dates via `/api/stagger` so subscriptions
   spread evenly across each interval window
 - Shorts and live streams are filtered out (`duration>180`, `/shorts/` URL exclusion)
@@ -54,12 +65,18 @@ ytdl-manager/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── README.md
-├── start.sh                # Container entrypoint — checks bgutil then starts uvicorn
+├── start.sh                # Container entrypoint — starts bgutil HTTP server
+│                            # in background, then starts uvicorn
 ├── app/
 │   ├── main.py
 │   ├── requirements.txt
 │   └── templates/
 │       ├── dashboard.html  # Web dashboard UI (served at / and /dashboard)
+│       ├── jobs.html       # Job Status page (served at /jobs-page)
+│       ├── container.html  # Container page (served at /container)
+│       ├── add.html        # Add subscription form
+│       ├── add_help.html   # Add subscription help
+│       ├── edit.html       # Edit subscription form
 │       └── help.html       # Help & reference docs (served at /help)
 └── scripts/
     └── ytdl.sh             # Interactive management menu (run on Ubuntu host)
